@@ -99,6 +99,26 @@ $SSH_CMD "cd $DEPLOY_WORKDIR && git pull"
 ok "Code updated on VM"
 
 # ============================================================================
+# Step 3.5: Build React SPA on VM
+# ============================================================================
+info "Step 3.5: Building React SPA on VM..."
+
+$SSH_CMD << 'NODE_EOF'
+  # Install Node.js if not present
+  if ! command -v node >/dev/null 2>&1; then
+    echo "[deploy] Node.js not found — installing Node.js 22.x..."
+    curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+    sudo apt-get install -y nodejs
+  fi
+  echo "[deploy] Node.js version: $(node --version)"
+NODE_EOF
+
+# Run npm install and build (interpolate DEPLOY_WORKDIR from local env)
+$SSH_CMD "cd $DEPLOY_WORKDIR/web && npm ci && npm run build"
+
+ok "React SPA built"
+
+# ============================================================================
 # Step 4: Build binary on VM
 # ============================================================================
 info "Step 4: Building binary on VM..."
