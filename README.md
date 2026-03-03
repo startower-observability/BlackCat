@@ -15,6 +15,7 @@ BlackCat receives your natural language requests, processes them through an LLM-
 - **MCP support** — Model Context Protocol server/client integration
 - **Encrypted vault** — AES-256-GCM encrypted storage for API keys and tokens
 - **Memory consolidation** — Persistent agent memory via MEMORY.md
+- **Pixel Cat Dashboard** — React SPA with RPG-style room scene, animated black cat reacting to system state, real-time HUD overlay at `localhost:8081/dashboard/`
 - **Security** — Command deny-list, shell sandboxing, auto-permit controls
 - **Docker support** — Docker Compose deployment
 
