@@ -1,8 +1,0 @@
-{{define "content"}}
-<h2>Agents</h2>
-<div id="agent-list" hx-ext="sse" sse-connect="/dashboard/events" sse-swap="agent-update">
-  {{range .Agents}}
-    {{template "agent-card" .}}
-  {{end}}
-</div>
-{{end}}

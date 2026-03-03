@@ -1,0 +1,67 @@
+@font-face {
+  font-family: 'Press Start 2P';
+  src: url('./fonts/PressStart2P-Regular.woff2') format('woff2');
+  font-weight: normal;
+  font-style: normal;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: #0d1117;
+  color: #c9d1d9;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 8px;
+}
+
+.rpg-panel {
+  background: rgba(13, 17, 23, 0.88);
+  border: 3px solid #30363d;
+  padding: 8px 12px;
+  box-shadow: 4px 4px 0 #000;
+}
+
+.badge { display: inline-block; padding: 4px 8px; font-size: 7px; text-transform: uppercase; border: 2px solid currentColor; }
+.badge-working { color: #1f6feb; border-color: #1f6feb; }
+.badge-idle { color: #484f58; border-color: #484f58; }
+.badge-error { color: #da3633; border-color: #da3633; animation: blink 0.8s step-end infinite; }
+.badge-thinking { color: #9e6a03; border-color: #9e6a03; }
+.badge-success { color: #238636; border-color: #238636; }
+
+@keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+.pixel-art { image-rendering: pixelated; image-rendering: crisp-edges; }
+
+.room-wrapper {
+  position: relative;
+  display: inline-block;
+  max-width: 960px;
+  width: 100%;
+}
+
+.hud-overlay {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  pointer-events: none;
+}
+
+.hud-overlay > * { pointer-events: auto; }
+
+.rpg-nav {
+  display: flex;
+  gap: 0;
+  background: rgba(13,17,23,0.95);
+  border-bottom: 3px solid #30363d;
+}
+
+.rpg-nav a {
+  padding: 12px 16px;
+  color: #484f58;
+  text-decoration: none;
+  font-size: 7px;
+  border-right: 2px solid #30363d;
+  display: block;
+}
+
+.rpg-nav a:hover, .rpg-nav a.active { color: #c9d1d9; background: #161b22; }

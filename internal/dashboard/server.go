@@ -5,7 +5,6 @@ import (
 	"crypto/hmac"
 	"errors"
 	"fmt"
-	"html"
 	"net/http"
 	"strings"
 	"sync"
@@ -97,16 +96,26 @@ func NewServer(cfg config.DashboardConfig, deps DashboardDeps) *Server {
 	r := chi.NewRouter()
 	apiHandler := NewAPIHandler(deps, s.startupTime)
 	s.apiHandler = apiHandler
-	r.Get("/dashboard/login", s.handleLoginPage)
+
+	spaH := SPAHandler()
+
+	// Login page: served by SPA without auth
+	r.Get("/dashboard/login", spaH.ServeHTTP)
 	r.Post("/dashboard/login", s.handleLogin)
 	r.Get("/dashboard/logout", s.handleLogout)
+
+	// Serve SPA assets WITHOUT auth (login page needs to load)
+	r.Get("/dashboard/assets/*", spaH.ServeHTTP)
+	r.Get("/dashboard/vite.svg", spaH.ServeHTTP)
+
 	r.Route("/dashboard", func(r chi.Router) {
 		r.Use(s.authMiddleware())
-		r.Get("/", s.handleIndex)
 		r.Get("/events", s.handleEvents)
 		r.Get("/qr/stream", s.handleQRStream)
 		apiHandler.RegisterRoutes(r)
-		r.Get("/static/*", s.handleStatic)
+		// SPA fallback for all other routes under /dashboard
+		r.Get("/*", spaH.ServeHTTP)
+		r.Get("/", spaH.ServeHTTP)
 	})
 
 	s.router = r
@@ -159,7 +168,9 @@ func (s *Server) authMiddleware() func(http.Handler) http.Handler {
 				}
 			}
 
-			if prefersHTML(r) {
+			// Browser requests: redirect to login page
+			accept := strings.ToLower(r.Header.Get("Accept"))
+			if strings.Contains(accept, "text/html") {
 				nextPath := r.URL.Path
 				if r.URL.RawQuery != "" {
 					nextPath += "?" + r.URL.RawQuery
@@ -289,48 +300,6 @@ func (s *Server) Health() daemon.SubsystemHealth {
 	}
 }
 
-func (s *Server) handleIndex(w http.ResponseWriter, _ *http.Request) {
-	if s.apiHandler == nil || s.apiHandler.renderer == nil {
-		// Fallback to JSON if templates unavailable
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"status":"ok","message":"dashboard running"}`))
-		return
-	}
-	subsystemCount := 0
-	if s.deps.SubsystemManager != nil {
-		subsystemCount = len(s.deps.SubsystemManager.Healthz())
-	}
-	view := IndexView{
-		SubsystemCount: subsystemCount,
-		Uptime:         time.Since(s.startupTime).Round(time.Second).String(),
-	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := s.apiHandler.renderer.Render(w, "index", view); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
-}
-
-func (s *Server) handleLoginPage(w http.ResponseWriter, r *http.Request) {
-	next := r.URL.Query().Get("next")
-	if next == "" {
-		next = "/dashboard/"
-	}
-
-	renderer := s.apiHandler.renderer
-	if renderer == nil {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`<!doctype html><html><body><form method="POST" action="/dashboard/login"><input type="password" name="token"><input type="hidden" name="next" value="` + html.EscapeString(next) + `"><button>Login</button></form></body></html>`))
-		return
-	}
-
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := renderer.Render(w, "login", LoginView{Next: next}); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
-}
-
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "bad request", http.StatusBadRequest)
@@ -344,17 +313,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !hmac.Equal([]byte(token), []byte(s.cfg.Token)) {
-		renderer := s.apiHandler.renderer
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		if renderer == nil {
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`<!doctype html><html><body><p>Invalid token</p><form method="POST" action="/dashboard/login"><input type="password" name="token"><button>Login</button></form></body></html>`))
-			return
-		}
-
-		if err := renderer.Render(w, "login", LoginView{Error: "Invalid token", Next: next}); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		}
+		http.Redirect(w, r, "/dashboard/login?error=invalid_token&next="+next, http.StatusSeeOther)
 		return
 	}
 
@@ -402,10 +361,4 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 			flusher.Flush()
 		}
 	}
-}
-
-func (s *Server) handleStatic(w http.ResponseWriter, _ *http.Request) {
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte("static assets placeholder"))
 }

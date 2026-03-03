@@ -42,3 +42,6 @@ website/.vitepress/dist/
 
 # Sisyphus agent workspace
 .sisyphus/
+
+web/node_modules/
+internal/dashboard/dist/

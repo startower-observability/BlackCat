@@ -5,7 +5,7 @@ BINARY  := blackcat
 GOOS    ?= $(shell go env GOOS)
 GOARCH  ?= $(shell go env GOARCH)
 
-.PHONY: build build-linux test vet deploy deploy-no-push verify clean help
+.PHONY: build build-linux test vet deploy deploy-no-push verify clean help web-install web build-all dev-web
 
 ## build: Build binary for current OS/arch
 build:
@@ -43,6 +43,22 @@ verify:
 ## clean: Remove built binary artifacts
 clean:
 	rm -f $(BINARY) $(BINARY)-linux-amd64
+
+## web-install: Install web dependencies (npm ci)
+web-install:
+	cd web && npm ci
+
+## web: Build React SPA (outputs to internal/dashboard/dist)
+web:
+	cd web && npm run build
+
+## build-all: Build React SPA then Go binary with embedded assets
+build-all: web
+	CGO_ENABLED=1 go build -tags fts5 -o blackcat .
+
+## dev-web: Start Vite dev server (proxies /dashboard/api to :8081)
+dev-web:
+	cd web && npm run dev
 
 ## help: Show this help message
 help:

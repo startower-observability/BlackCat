@@ -3,7 +3,6 @@ package dashboard
 import (
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"strconv"
 	"strings"
 	"time"
@@ -21,7 +20,6 @@ type APIHandler struct {
 	heartbeatStore   HeartbeatStore
 	taskDetailLister TaskDetailLister
 	scheduleProvider ScheduleProvider
-	renderer         *TemplateRenderer
 	startupTime      time.Time
 }
 
@@ -83,19 +81,19 @@ type apiScheduleResponse struct {
 	NextMonth int               `json:"next_month"`
 }
 
-func NewAPIHandler(deps DashboardDeps, startupTime time.Time) *APIHandler {
-	renderer, err := NewTemplateRenderer()
-	if err != nil {
-		renderer = nil
-	}
+type catStateResponse struct {
+	State       string `json:"state"`       // working|idle|error|thinking|success
+	Description string `json:"description"` // human-readable description
+	Since       string `json:"since"`       // RFC3339 timestamp
+}
 
+func NewAPIHandler(deps DashboardDeps, startupTime time.Time) *APIHandler {
 	return &APIHandler{
 		subsystemManager: deps.SubsystemManager,
 		scheduler:        deps.TaskLister,
 		heartbeatStore:   deps.HeartbeatStore,
 		taskDetailLister: deps.TaskDetailLister,
 		scheduleProvider: deps.ScheduleProvider,
-		renderer:         renderer,
 		startupTime:      startupTime,
 	}
 }
@@ -109,6 +107,8 @@ func (h *APIHandler) RegisterRoutes(r chi.Router) {
 		r.Get("/tasks/{id}", h.handleTaskDetail)
 		r.Get("/health", h.handleHealth)
 		r.Get("/schedule", h.handleAPISchedule)
+		r.Get("/cat-state", h.handleCatState)
+		r.Get("/me", h.handleMe)
 	})
 }
 
@@ -121,31 +121,12 @@ func (h *APIHandler) handleStatus(w http.ResponseWriter, r *http.Request) {
 		SubsystemCount: len(subsystems),
 	}
 
-	if prefersHTML(r) {
-		state := "failed"
-		if status.Healthy {
-			state = "healthy"
-		}
-
-		view := AgentView{
-			Name:        "blackcat",
-			State:       state,
-			CurrentTask: "version " + status.Version,
-			LastActive:  status.Uptime,
-		}
-
-		if h.renderAgentCards(w, http.StatusOK, []AgentView{view}) {
-			return
-		}
-	}
-
 	writeJSON(w, http.StatusOK, status)
 }
 
 func (h *APIHandler) handleAgents(w http.ResponseWriter, r *http.Request) {
 	subsystems := h.listSubsystems()
 	agents := make([]apiAgentResponse, 0, len(subsystems))
-	views := make([]AgentView, 0, len(subsystems))
 
 	now := time.Now().UTC().Format(time.RFC3339)
 	for _, subsystem := range subsystems {
@@ -160,17 +141,6 @@ func (h *APIHandler) handleAgents(w http.ResponseWriter, r *http.Request) {
 			State:      state,
 			LastActive: now,
 		})
-
-		views = append(views, AgentView{
-			Name:        name,
-			State:       state,
-			CurrentTask: subsystem.Message,
-			LastActive:  now,
-		})
-	}
-
-	if prefersHTML(r) && h.renderAgentCards(w, http.StatusOK, views) {
-		return
 	}
 
 	writeJSON(w, http.StatusOK, agents)
@@ -204,17 +174,6 @@ func (h *APIHandler) handleTasks(w http.ResponseWriter, r *http.Request) {
 		Limit: limit,
 	}
 
-	if prefersHTML(r) {
-		rows := make([]TaskView, 0, len(pagedTasks))
-		for _, task := range pagedTasks {
-			rows = append(rows, taskToView(task))
-		}
-
-		if h.renderTaskRows(w, http.StatusOK, rows) {
-			return
-		}
-	}
-
 	writeJSON(w, http.StatusOK, response)
 }
 
@@ -226,10 +185,6 @@ func (h *APIHandler) handleTaskDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if prefersHTML(r) && h.renderTaskRows(w, http.StatusOK, []TaskView{taskToView(task)}) {
-		return
-	}
-
 	writeJSON(w, http.StatusOK, task)
 }
 
@@ -237,32 +192,6 @@ func (h *APIHandler) handleHealth(w http.ResponseWriter, r *http.Request) {
 	results := make([]scheduler.HeartbeatResult, 0)
 	if h.heartbeatStore != nil {
 		results = h.heartbeatStore.Latest(10)
-	}
-
-	if prefersHTML(r) {
-		agents := make([]AgentView, 0, len(results))
-		for i, result := range results {
-			state := "failed"
-			if result.OverallHealthy {
-				state = "healthy"
-			}
-
-			lastActive := "unknown"
-			if !result.Timestamp.IsZero() {
-				lastActive = result.Timestamp.UTC().Format(time.RFC3339)
-			}
-
-			agents = append(agents, AgentView{
-				Name:        "heartbeat-" + strconv.Itoa(i+1),
-				State:       state,
-				CurrentTask: "subsystems: " + strconv.Itoa(len(result.Subsystems)),
-				LastActive:  lastActive,
-			})
-		}
-
-		if h.renderAgentCards(w, http.StatusOK, agents) {
-			return
-		}
 	}
 
 	writeJSON(w, http.StatusOK, results)
@@ -319,52 +248,6 @@ func (h *APIHandler) findTask(taskID string) (apiTaskResponse, bool) {
 	return apiTaskResponse{}, false
 }
 
-func (h *APIHandler) renderAgentCards(w http.ResponseWriter, statusCode int, agents []AgentView) bool {
-	if h.renderer == nil {
-		return false
-	}
-
-	recorder := httptest.NewRecorder()
-	for _, agent := range agents {
-		if err := h.renderer.RenderPartial(recorder, "agent-card", agent); err != nil {
-			return false
-		}
-	}
-
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.WriteHeader(statusCode)
-	_, _ = w.Write(recorder.Body.Bytes())
-	return true
-}
-
-func (h *APIHandler) renderTaskRows(w http.ResponseWriter, statusCode int, rows []TaskView) bool {
-	if h.renderer == nil {
-		return false
-	}
-
-	recorder := httptest.NewRecorder()
-	for _, row := range rows {
-		if err := h.renderer.RenderPartial(recorder, "task-row", row); err != nil {
-			return false
-		}
-	}
-
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.WriteHeader(statusCode)
-	_, _ = w.Write(recorder.Body.Bytes())
-	return true
-}
-
-func taskToView(task apiTaskResponse) TaskView {
-	return TaskView{
-		ID:       task.ID,
-		Name:     task.Name,
-		Status:   task.State,
-		Duration: "-",
-		LastRun:  "-",
-	}
-}
-
 func parsePositiveInt(raw string, fallback int) int {
 	value, err := strconv.Atoi(strings.TrimSpace(raw))
 	if err != nil || value <= 0 {
@@ -372,11 +255,6 @@ func parsePositiveInt(raw string, fallback int) int {
 	}
 
 	return value
-}
-
-func prefersHTML(r *http.Request) bool {
-	accept := strings.ToLower(r.Header.Get("Accept"))
-	return strings.Contains(accept, "text/html")
 }
 
 func writeJSON(w http.ResponseWriter, statusCode int, payload interface{}) {
@@ -442,17 +320,9 @@ func (h *APIHandler) handleSchedule(w http.ResponseWriter, r *http.Request) {
 	grid := BuildMonthGrid(year, month, tasks, heartbeats, jobs)
 	view := MonthGridToView(grid, now)
 
-	if h.renderer == nil {
-		writeJSON(w, http.StatusOK, view)
-		return
-	}
-
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.WriteHeader(http.StatusOK)
-	if err := h.renderer.Render(w, "schedule", view); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
+	writeJSON(w, http.StatusOK, scheduleViewToJSON(view))
 }
+
 func (h *APIHandler) handleAPISchedule(w http.ResponseWriter, r *http.Request) {
 	// Parse year and month from query params, default to current month
 	now := time.Now().UTC()
@@ -491,6 +361,43 @@ func (h *APIHandler) handleAPISchedule(w http.ResponseWriter, r *http.Request) {
 
 	// Always return JSON, never HTML
 	writeJSON(w, http.StatusOK, scheduleViewToJSON(view))
+}
+
+func (h *APIHandler) handleCatState(w http.ResponseWriter, r *http.Request) {
+	subsystems := h.listSubsystems()
+	state := "idle"
+	description := "All systems nominal"
+
+	for _, sub := range subsystems {
+		normalized := normalizeSubsystemState(sub.Status)
+		switch normalized {
+		case "failed", "degraded", "error", "stopped":
+			state = "error"
+			description = sub.Name + " is " + normalized
+		}
+	}
+
+	if state == "idle" {
+		for _, sub := range subsystems {
+			normalized := normalizeSubsystemState(sub.Status)
+			name := strings.ToLower(strings.TrimSpace(sub.Name))
+			if name == "opencode" && (normalized == "running" || normalized == "processing") {
+				state = "working"
+				description = "OpenCode is active"
+				break
+			}
+		}
+	}
+
+	writeJSON(w, http.StatusOK, catStateResponse{
+		State:       state,
+		Description: description,
+		Since:       time.Now().UTC().Format(time.RFC3339),
+	})
+}
+
+func (h *APIHandler) handleMe(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]bool{"authenticated": true})
 }
 
 func scheduleViewToJSON(v ScheduleView) apiScheduleResponse {

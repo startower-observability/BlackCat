@@ -210,7 +210,7 @@ func TestAPIUnauthorized(t *testing.T) {
 	}
 }
 
-func TestAPIContentNegotiation(t *testing.T) {
+func TestAPIAlwaysReturnsJSON(t *testing.T) {
 	server := newAPITestServer(t, []string{"task-1"}, nil)
 	rr := performAPIRequest(t, server, "/dashboard/api/agents", true, "text/html")
 
@@ -219,22 +219,14 @@ func TestAPIContentNegotiation(t *testing.T) {
 	}
 
 	contentType := rr.Header().Get("Content-Type")
-	if strings.Contains(contentType, "text/html") {
-		if !strings.Contains(rr.Body.String(), "<") {
-			t.Fatalf("expected HTML body, got %q", rr.Body.String())
-		}
-		return
+	if !strings.Contains(contentType, "application/json") {
+		t.Fatalf("expected application/json content type even with Accept: text/html, got %q", contentType)
 	}
 
-	if strings.Contains(contentType, "application/json") {
-		var payload interface{}
-		if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
-			t.Fatalf("expected JSON fallback body, decode error: %v", err)
-		}
-		return
+	var payload interface{}
+	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("expected valid JSON body, decode error: %v", err)
 	}
-
-	t.Fatalf("expected text/html or application/json content type, got %q", contentType)
 }
 
 func newAPITestServer(t *testing.T, tasks []string, heartbeats []scheduler.HeartbeatResult) *Server {

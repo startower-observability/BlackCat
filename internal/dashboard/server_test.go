@@ -109,7 +109,7 @@ func noRedirectClient() *http.Client {
 // Integration tests (12)
 // ---------------------------------------------------------------------------
 
-func TestLoginPageAccessible(t *testing.T) {
+func TestLoginPageServesSPA(t *testing.T) {
 	_, ts := newTestServer(t)
 
 	resp, err := http.Get(ts.URL + "/dashboard/login")
@@ -123,8 +123,8 @@ func TestLoginPageAccessible(t *testing.T) {
 	}
 
 	body, _ := io.ReadAll(resp.Body)
-	if !strings.Contains(string(body), "<form") {
-		t.Fatal("expected body to contain <form")
+	if !strings.Contains(string(body), `id="root"`) {
+		t.Fatal("expected SPA body to contain id=\"root\"")
 	}
 }
 
@@ -170,13 +170,16 @@ func TestLoginFailure(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("expected status 200, got %d", resp.StatusCode)
+	if resp.StatusCode != http.StatusSeeOther {
+		t.Fatalf("expected status 303, got %d", resp.StatusCode)
 	}
 
-	body, _ := io.ReadAll(resp.Body)
-	if !strings.Contains(string(body), "Invalid token") {
-		t.Fatal("expected body to contain 'Invalid token'")
+	loc := resp.Header.Get("Location")
+	if !strings.Contains(loc, "/dashboard/login") {
+		t.Fatalf("expected redirect to /dashboard/login, got %q", loc)
+	}
+	if !strings.Contains(loc, "error=invalid_token") {
+		t.Fatalf("expected error=invalid_token in redirect, got %q", loc)
 	}
 
 	setCookie := resp.Header.Get("Set-Cookie")
@@ -360,7 +363,7 @@ func TestOpenRedirectPrevention(t *testing.T) {
 	}
 }
 
-func TestIndexRendersTemplate(t *testing.T) {
+func TestSPAServedOnIndex(t *testing.T) {
 	_, ts := newTestServer(t)
 	client := noRedirectClient()
 
@@ -378,7 +381,58 @@ func TestIndexRendersTemplate(t *testing.T) {
 	}
 
 	body, _ := io.ReadAll(resp.Body)
-	if strings.Contains(string(body), "skeleton placeholder") {
-		t.Fatal("body should NOT contain 'skeleton placeholder'")
+	if !strings.Contains(string(body), `id="root"`) {
+		t.Fatal("expected SPA body to contain id=\"root\"")
+	}
+}
+
+func TestSPAFallbackOnUnknownPath(t *testing.T) {
+	_, ts := newTestServer(t)
+	client := noRedirectClient()
+
+	req, _ := http.NewRequest(http.MethodGet, ts.URL+"/dashboard/nonexistent-path", nil)
+	req.Header.Set("Authorization", "Bearer test-token")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("GET /dashboard/nonexistent-path: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", resp.StatusCode)
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	if !strings.Contains(string(body), `id="root"`) {
+		t.Fatal("expected SPA fallback body to contain id=\"root\"")
+	}
+}
+
+func TestCatStateAPI(t *testing.T) {
+	_, ts := newTestServer(t)
+	client := noRedirectClient()
+
+	req, _ := http.NewRequest(http.MethodGet, ts.URL+"/dashboard/api/cat-state", nil)
+	req.Header.Set("Authorization", "Bearer test-token")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("GET /dashboard/api/cat-state: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", resp.StatusCode)
+	}
+
+	contentType := resp.Header.Get("Content-Type")
+	if !strings.Contains(contentType, "application/json") {
+		t.Fatalf("expected application/json content type, got %q", contentType)
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	if !strings.Contains(string(body), `"state"`) {
+		t.Fatalf("expected JSON with state field, got %q", string(body))
 	}
 }
