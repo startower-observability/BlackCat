@@ -269,9 +269,11 @@ Per-user-per-channel conversation history. Flat-file JSON storage (one file per 
 `Orchestrator.Dispatch()` runs sub-agents in parallel with `errgroup`. Hard cap: 10 concurrent sub-agents. Results returned in original index order. All errors captured per-Result.
 
 ### Dashboard
-HTMX-based web UI. Token authentication via Bearer header. Routes:
-- `GET /dashboard/events` — SSE (no auth)
-- `GET /dashboard/` — index (auth required)
+React SPA (PixiJS v8 + React Router v7) embedded in Go binary via `//go:embed`. Token authentication via Bearer header. SPA assets served without auth (login page), API and dashboard pages require auth. Routes:
+- `GET /dashboard/login` — Login page (no auth)
+- `GET /dashboard/assets/*` — SPA static assets (no auth)
+- `GET /dashboard/events` — SSE real-time updates (auth required)
+- `GET /dashboard/` and sub-routes — React SPA pages (auth required)
 - `GET /dashboard/api/*` — JSON API (auth required)
 
 ### Scheduler

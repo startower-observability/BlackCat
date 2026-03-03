@@ -33,20 +33,27 @@ go install github.com/startower-observability/blackcat@latest
 
 ## Build from Source
 
-For a manual build:
+For a manual build with all features (including the web dashboard):
 
 ```bash
 git clone https://github.com/startower-observability/blackcat.git
 cd blackcat
-go build -o blackcat .
+make build-all   # builds React SPA + embeds into Go binary
+```
+
+Or build manually step by step:
+
+```bash
+cd web && npm ci && npm run build   # Build React SPA
+cd .. && CGO_ENABLED=1 go build -tags fts5 -o blackcat .
 ```
 
 ### WhatsApp Support (CGO)
 
-If you plan to use the WhatsApp channel, you must build with CGO enabled for SQLite support:
+WhatsApp requires CGO for SQLite. The `make build-all` command already includes CGO. For a minimal build without WhatsApp:
 
 ```bash
-CGO_ENABLED=1 go build -o blackcat .
+go build -o blackcat .
 ```
 
 ## Updating
