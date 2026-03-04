@@ -11,7 +11,7 @@ import (
 
 const (
 	memoryToolName        = "memory_search"
-	memoryToolDescription = "Search agent memory for relevant past interactions and knowledge"
+	memoryToolDescription = "[DEPRECATED: use archival_memory_search] Search agent memory for relevant past interactions and knowledge"
 )
 
 var memoryToolParameters = json.RawMessage(`{

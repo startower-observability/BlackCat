@@ -3,9 +3,12 @@ package memory
 import (
 	"context"
 	"database/sql"
+	"encoding/binary"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -33,6 +36,11 @@ func NewSQLiteStore(dbPath string) (*SQLiteStore, error) {
 	if err := createSchema(db); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("memory: create schema: %w", err)
+	}
+
+	if err := createArchivalSchema(db); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("memory: create archival schema: %w", err)
 	}
 
 	return &SQLiteStore{db: db}, nil
@@ -63,6 +71,10 @@ func createSchema(db *sql.DB) error {
 		INSERT INTO memories_fts(memories_fts, rowid, content, tags)
 		VALUES ('delete', old.id, old.content, old.tags);
 	END;
+	CREATE TABLE IF NOT EXISTS metadata (
+		key   TEXT PRIMARY KEY,
+		value TEXT NOT NULL
+	);
 	`
 	_, err := db.Exec(schema)
 	return err
@@ -198,6 +210,11 @@ func (s *SQLiteStore) Close() error {
 	return s.db.Close()
 }
 
+// DB returns the underlying *sql.DB for shared use.
+func (s *SQLiteStore) DB() *sql.DB {
+	return s.db
+}
+
 // Consolidate is a no-op for SQLiteStore.
 func (s *SQLiteStore) Consolidate(ctx context.Context) error {
 	return nil
@@ -267,4 +284,282 @@ func tagSource(tags []string) string {
 		return tags[0]
 	}
 	return ""
+}
+
+// ---------------------------------------------------------------------------
+// Archival Memory
+// ---------------------------------------------------------------------------
+
+func createArchivalSchema(db *sql.DB) error {
+	schema := `
+	CREATE TABLE IF NOT EXISTS archival_memory (
+		id         INTEGER PRIMARY KEY AUTOINCREMENT,
+		user_id    TEXT    NOT NULL,
+		content    TEXT    NOT NULL,
+		embedding  BLOB,
+		tags       TEXT    DEFAULT '',
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
+
+	CREATE VIRTUAL TABLE IF NOT EXISTS archival_memory_fts USING fts5(
+		content, tags,
+		content='archival_memory',
+		content_rowid='id'
+	);
+
+	CREATE TRIGGER IF NOT EXISTS archival_memory_ai AFTER INSERT ON archival_memory BEGIN
+		INSERT INTO archival_memory_fts(rowid, content, tags)
+		VALUES (new.id, new.content, new.tags);
+	END;
+
+	CREATE TRIGGER IF NOT EXISTS archival_memory_ad AFTER DELETE ON archival_memory BEGIN
+		INSERT INTO archival_memory_fts(archival_memory_fts, rowid, content, tags)
+		VALUES ('delete', old.id, old.content, old.tags);
+	END;
+	`
+	_, err := db.Exec(schema)
+	return err
+}
+
+// float32sToBytes serializes a float32 slice to little-endian bytes.
+func float32sToBytes(v []float32) []byte {
+	b := make([]byte, 4*len(v))
+	for i, f := range v {
+		binary.LittleEndian.PutUint32(b[i*4:], math.Float32bits(f))
+	}
+	return b
+}
+
+// bytesToFloat32s deserializes little-endian bytes to a float32 slice.
+func bytesToFloat32s(b []byte) []float32 {
+	v := make([]float32, len(b)/4)
+	for i := range v {
+		v[i] = math.Float32frombits(binary.LittleEndian.Uint32(b[i*4:]))
+	}
+	return v
+}
+
+// InsertArchival adds a new entry to archival memory for a user.
+func (s *SQLiteStore) InsertArchival(ctx context.Context, userID, content string, tags []string, embedding []float32) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	tagStr := strings.Join(tags, ",")
+	var embBlob []byte
+	if len(embedding) > 0 {
+		embBlob = float32sToBytes(embedding)
+	}
+
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO archival_memory (user_id, content, embedding, tags, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+		userID, content, embBlob, tagStr,
+	)
+	if err != nil {
+		return fmt.Errorf("memory: archival insert: %w", err)
+	}
+	return nil
+}
+
+// SearchArchival performs hybrid search (FTS5 + vector cosine similarity)
+// across archival memory for a user. If embedding is nil, only FTS5 is used.
+// Results are fused using Reciprocal Rank Fusion (RRF) with k=60.
+func (s *SQLiteStore) SearchArchival(ctx context.Context, userID, query string, embedding []float32, limit int) ([]ArchivalResult, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if limit <= 0 {
+		limit = 10
+	}
+
+	// --- FTS5 ranked list ---
+	ftsRanked, ftsResults, err := s.archivalFTSSearch(ctx, userID, query)
+	if err != nil {
+		return nil, err
+	}
+
+	// If no embedding provided, return FTS-only results.
+	if embedding == nil {
+		if len(ftsResults) > limit {
+			ftsResults = ftsResults[:limit]
+		}
+		return ftsResults, nil
+	}
+
+	// --- Vector ranked list ---
+	vecRanked, vecResults, err := s.archivalVectorSearch(ctx, userID, embedding)
+	if err != nil {
+		return nil, err
+	}
+
+	// --- RRF Fusion ---
+	// Build a combined pool of all unique results keyed by archival_memory.id.
+	// We use the row content as the canonical result.
+	type indexedResult struct {
+		result ArchivalResult
+		rowID  int64
+	}
+
+	pool := make(map[int64]*indexedResult)
+	for i, id := range ftsRanked {
+		pool[id] = &indexedResult{result: ftsResults[i], rowID: id}
+	}
+	for i, id := range vecRanked {
+		if _, ok := pool[id]; !ok {
+			pool[id] = &indexedResult{result: vecResults[i], rowID: id}
+		}
+	}
+
+	// Build int-indexed lists for RRF
+	idToIdx := make(map[int64]int)
+	idxToResult := make([]ArchivalResult, 0, len(pool))
+	for id, ir := range pool {
+		idToIdx[id] = len(idxToResult)
+		idxToResult = append(idxToResult, ir.result)
+	}
+
+	ftsIntRanked := make([]int, len(ftsRanked))
+	for i, id := range ftsRanked {
+		ftsIntRanked[i] = idToIdx[id]
+	}
+	vecIntRanked := make([]int, len(vecRanked))
+	for i, id := range vecRanked {
+		vecIntRanked[i] = idToIdx[id]
+	}
+
+	scores := rrfFuse(ftsIntRanked, vecIntRanked)
+	for idx, score := range scores {
+		idxToResult[idx].Score = score
+	}
+
+	sortByScoreDesc(idxToResult)
+
+	if len(idxToResult) > limit {
+		idxToResult = idxToResult[:limit]
+	}
+	return idxToResult, nil
+}
+
+// archivalFTSSearch returns FTS5-ranked archival results for a user.
+// Returns (rowIDs, results, error) where rowIDs are ordered by FTS5 rank.
+func (s *SQLiteStore) archivalFTSSearch(ctx context.Context, userID, query string) ([]int64, []ArchivalResult, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT m.id, m.content, m.tags, m.created_at
+		 FROM archival_memory m
+		 JOIN archival_memory_fts fts ON m.id = fts.rowid
+		 WHERE m.user_id = ? AND archival_memory_fts MATCH ?
+		 ORDER BY rank`,
+		userID, ftsQuery(query),
+	)
+	if err != nil {
+		// Return empty on FTS parse error.
+		return nil, nil, nil
+	}
+	defer rows.Close()
+
+	var ids []int64
+	var results []ArchivalResult
+	for rows.Next() {
+		var id int64
+		var content, tags string
+		var createdAt time.Time
+		if err := rows.Scan(&id, &content, &tags, &createdAt); err != nil {
+			return nil, nil, fmt.Errorf("memory: archival fts scan: %w", err)
+		}
+		ids = append(ids, id)
+		results = append(results, ArchivalResult{
+			Content:   content,
+			Tags:      splitTags(tags),
+			CreatedAt: createdAt,
+		})
+	}
+	return ids, results, rows.Err()
+}
+
+// archivalVectorSearch returns vector-similarity-ranked archival results for a user.
+// Returns (rowIDs, results, error) where rowIDs are ordered by cosine similarity descending.
+func (s *SQLiteStore) archivalVectorSearch(ctx context.Context, userID string, queryEmb []float32) ([]int64, []ArchivalResult, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, content, embedding, tags, created_at
+		 FROM archival_memory
+		 WHERE user_id = ? AND embedding IS NOT NULL`,
+		userID,
+	)
+	if err != nil {
+		return nil, nil, fmt.Errorf("memory: archival vector query: %w", err)
+	}
+	defer rows.Close()
+
+	type vecRow struct {
+		id        int64
+		result    ArchivalResult
+		similarity float32
+	}
+
+	var vrows []vecRow
+	for rows.Next() {
+		var id int64
+		var content string
+		var embBlob []byte
+		var tags string
+		var createdAt time.Time
+		if err := rows.Scan(&id, &content, &embBlob, &tags, &createdAt); err != nil {
+			return nil, nil, fmt.Errorf("memory: archival vector scan: %w", err)
+		}
+		sim := CosineSimilarity(queryEmb, bytesToFloat32s(embBlob))
+		vrows = append(vrows, vecRow{
+			id: id,
+			result: ArchivalResult{
+				Content:   content,
+				Tags:      splitTags(tags),
+				CreatedAt: createdAt,
+			},
+			similarity: sim,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, nil, err
+	}
+
+	// Sort by similarity descending.
+	sort.Slice(vrows, func(i, j int) bool {
+		return vrows[i].similarity > vrows[j].similarity
+	})
+
+	ids := make([]int64, len(vrows))
+	results := make([]ArchivalResult, len(vrows))
+	for i, vr := range vrows {
+		ids[i] = vr.id
+		results[i] = vr.result
+	}
+	return ids, results, nil
+}
+
+// CountArchival returns the total number of archival entries for a user.
+func (s *SQLiteStore) CountArchival(ctx context.Context, userID string) (int, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var n int
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM archival_memory WHERE user_id = ?`, userID,
+	).Scan(&n); err != nil {
+		return 0, fmt.Errorf("memory: archival count: %w", err)
+	}
+	return n, nil
+}
+
+// splitTags splits a comma-separated tag string into a trimmed slice.
+func splitTags(tags string) []string {
+	if tags == "" {
+		return nil
+	}
+	var result []string
+	for _, t := range strings.Split(tags, ",") {
+		if s := strings.TrimSpace(t); s != "" {
+			result = append(result, s)
+		}
+	}
+	return result
 }

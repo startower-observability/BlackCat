@@ -124,6 +124,28 @@ func runDaemon(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// Create embedding client (nil if no API key configured)
+	var embedClient *memory.EmbeddingClient
+	if cfg.Memory.Embedding.APIKey != "" {
+		embedClient = memory.NewEmbeddingClient(cfg.Memory.Embedding.APIKey, cfg.Memory.Embedding.BaseURL, cfg.Memory.Embedding.Model)
+		slog.Info("embedding client initialized", "model", cfg.Memory.Embedding.Model)
+	}
+
+	// Create core memory store (shares the SQLite DB)
+	var coreStore *memory.CoreStore
+	if sqliteMemStore != nil {
+		coreStore = memory.NewCoreStore(sqliteMemStore.DB())
+	}
+
+	// Migrate MEMORY.md to archival (idempotent)
+	if sqliteMemStore != nil && cfg.Memory.FilePath != "" {
+		if migrated, migrErr := memory.MigrateFromMemoryMD(ctx, cfg.Memory.FilePath, sqliteMemStore, embedClient, "default"); migrErr != nil {
+			slog.Warn("MEMORY.md archival migration failed", "err", migrErr)
+		} else if migrated > 0 {
+			slog.Info("migrated MEMORY.md entries to archival", "count", migrated)
+		}
+	}
+
 	// Create session store
 	sessionStoreDir := cfg.Session.StoreDir
 	if sessionStoreDir == "" {
@@ -210,6 +232,11 @@ func runDaemon(cmd *cobra.Command, args []string) error {
 	if sqliteMemStore != nil {
 		registry.Register(tools.NewMemoryTool(sqliteMemStore))
 	}
+	// Register three-tier memory tools (core + archival)
+	if sqliteMemStore != nil {
+		tools.RegisterMemoryTools(registry, coreStore, sqliteMemStore, embedClient, "default")
+		slog.Info("memory tools registered (core + archival)")
+	}
 
 	mcpClient := mcp.NewClient()
 	for _, serverCfg := range cfg.MCP.Servers {
@@ -287,6 +314,7 @@ func runDaemon(cmd *cobra.Command, args []string) error {
 		ProviderName:     activeProviderName,
 		MaxContextTokens: cfg.LLM.MaxContextTokens,
 		MemoryFileStore:  fileMemStore,
+		CoreStore:        coreStore,
 	}
 
 	bus := channel.NewMessageBus(256)
@@ -448,6 +476,13 @@ func runDaemon(cmd *cobra.Command, args []string) error {
 				}
 				loopCfg.MaxHistoryMessages = historyMessageLimit
 				loopCfg.ChannelType = string(m.ChannelType)
+
+				// Set per-user ID for memory isolation
+				if m.UserID != "" {
+					loopCfg.UserID = m.UserID
+				} else {
+					loopCfg.UserID = "default"
+				}
 
 				if rateLimiter != nil {
 					rateLimitKey := string(m.ChannelType) + ":" + m.UserID

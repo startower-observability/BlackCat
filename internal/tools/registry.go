@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"sync"
 
+	"github.com/startower-observability/blackcat/internal/memory"
 	"github.com/startower-observability/blackcat/internal/types"
 )
 
@@ -62,4 +63,18 @@ func (r *Registry) Execute(ctx context.Context, name string, args json.RawMessag
 		return "", err
 	}
 	return t.Execute(ctx, args)
+}
+
+// RegisterMemoryTools registers the core memory and archival memory tools
+// into the given registry. The userID is baked into each tool handler at
+// construction time for security — it is NOT passed via tool parameters.
+func RegisterMemoryTools(r *Registry, core *memory.CoreStore, archival *memory.SQLiteStore, embed *memory.EmbeddingClient, userID string) {
+	if core != nil {
+		h := NewCoreMemoryToolHandler(core, userID)
+		h.RegisterTools(r)
+	}
+	if archival != nil {
+		h := NewArchivalMemoryToolHandler(archival, embed, userID)
+		h.RegisterTools(r)
+	}
 }

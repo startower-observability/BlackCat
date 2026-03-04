@@ -87,8 +87,27 @@ type SecurityConfig struct {
 
 // MemoryConfig holds memory consolidation settings.
 type MemoryConfig struct {
-	FilePath               string `yaml:"filePath"`               // e.g., "MEMORY.md"
-	ConsolidationThreshold int    `yaml:"consolidationThreshold"` // Threshold for consolidation
+	FilePath               string           `yaml:"filePath"`               // e.g., "MEMORY.md"
+	ConsolidationThreshold int              `yaml:"consolidationThreshold"` // Threshold for consolidation
+	Store                  string           `yaml:"store"`                  // "sqlite" (default) or "file"
+	SQLitePath             string           `yaml:"sqlitePath"`             // e.g., "~/.blackcat/memory.db"
+	Embedding              EmbeddingConfig  `yaml:"embedding"`
+	CoreMemory             CoreMemoryConfig `yaml:"coreMemory"`
+	MaxArchival            int              `yaml:"maxArchival"` // 0 = unlimited
+}
+
+// EmbeddingConfig holds settings for the embedding provider.
+type EmbeddingConfig struct {
+	Provider string `yaml:"provider"` // e.g., "openai"
+	Model    string `yaml:"model"`    // e.g., "text-embedding-3-small"
+	APIKey   string `yaml:"apiKey"`   // Set via env or vault
+	BaseURL  string `yaml:"baseURL"`  // Optional custom endpoint
+}
+
+// CoreMemoryConfig holds settings for the per-user core memory store.
+type CoreMemoryConfig struct {
+	MaxEntries  int `yaml:"maxEntries"`  // default 20
+	MaxValueLen int `yaml:"maxValueLen"` // default 500
 }
 
 // MCPConfig holds MCP server configurations.
@@ -278,5 +297,19 @@ func (c *Config) Validate() {
 	// Session defaults
 	if c.Session.MaxHistory == 0 {
 		c.Session.MaxHistory = 50
+	}
+
+	// Memory defaults
+	if c.Memory.MaxArchival == 0 {
+		c.Memory.MaxArchival = 10000
+	}
+	if c.Memory.CoreMemory.MaxEntries == 0 {
+		c.Memory.CoreMemory.MaxEntries = 20
+	}
+	if c.Memory.CoreMemory.MaxValueLen == 0 {
+		c.Memory.CoreMemory.MaxValueLen = 500
+	}
+	if c.Memory.Embedding.Model == "" {
+		c.Memory.Embedding.Model = "text-embedding-3-small"
 	}
 }

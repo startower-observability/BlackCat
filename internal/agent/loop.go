@@ -40,6 +40,8 @@ type Loop struct {
 	modelName          string
 	providerName       string
 	channelType        string
+	userID    string
+	coreStore *memory.CoreStore
 }
 
 type LoopConfig struct {
@@ -61,6 +63,8 @@ type LoopConfig struct {
 	ModelName          string
 	ProviderName       string
 	ChannelType        string
+	UserID    string
+	CoreStore *memory.CoreStore
 }
 
 func NewLoop(cfg LoopConfig) *Loop {
@@ -123,6 +127,8 @@ func NewLoop(cfg LoopConfig) *Loop {
 		modelName:          cfg.ModelName,
 		providerName:       cfg.ProviderName,
 		channelType:        cfg.ChannelType,
+		userID:    cfg.UserID,
+		coreStore: cfg.CoreStore,
 	}
 }
 
@@ -350,33 +356,10 @@ func (l *Loop) buildSystemPrompt(ctx context.Context) (string, error) {
 	}
 	sections = append(sections, strings.TrimSpace(runtime.String()))
 
-	if l.memory != nil {
-		entries, err := l.memory.Read(ctx)
-		if err != nil {
-			return "", err
-		}
-
-		if len(entries) > 0 {
-			start := 0
-			if len(entries) > 5 {
-				start = len(entries) - 5
-			}
-
-			var b strings.Builder
-			b.WriteString("# Recent Memory\n")
-			for _, entry := range entries[start:] {
-				b.WriteString("- ")
-				b.WriteString(entry.Timestamp.UTC().Format("2006-01-02T15:04:05Z"))
-				b.WriteString(": ")
-				b.WriteString(strings.TrimSpace(entry.Content))
-				if len(entry.Tags) > 0 {
-					b.WriteString(" (tags: ")
-					b.WriteString(strings.Join(entry.Tags, ", "))
-					b.WriteByte(')')
-				}
-				b.WriteByte('\n')
-			}
-			sections = append(sections, strings.TrimSpace(b.String()))
+	if l.coreStore != nil {
+		coreMemory, coreErr := l.coreStore.FormatForPrompt(ctx, l.userID)
+		if coreErr == nil && coreMemory != "" {
+			sections = append(sections, coreMemory)
 		}
 	}
 
@@ -389,9 +372,9 @@ func (l *Loop) buildSystemPrompt(ctx context.Context) (string, error) {
 
 	if l.maxContextTokens > 0 {
 		// Remove sections in priority order until under budget.
-		// Priority (remove first -> last): Recent Memory, Skills, AGENTS.md
+		// Priority (remove first -> last): Core Memory, Skills, AGENTS.md
 		// NEVER remove: Persona, SOUL.md, IDENTITY.md, Tools, Runtime Context, CRITICAL REMINDER.
-		removablePrefixes := []string{"# Recent Memory", "# Skills", "# AGENTS.md"}
+		removablePrefixes := []string{"### Core Memory", "# Skills", "# AGENTS.md"}
 		for _, prefix := range removablePrefixes {
 			joined := strings.Join(sections, "\n\n")
 			if llm.EstimateTokens(joined) <= l.maxContextTokens {
