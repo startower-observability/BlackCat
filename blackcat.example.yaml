@@ -215,10 +215,29 @@ dashboard:
 scheduler:
   enabled: false           # Enable cron scheduler (default: false)
   jobs:
+    # Shell command job (existing behavior):
     # - name: "memory-consolidate"
-    #   schedule: "0 * * * *"  # Every hour (cron format)
+    #   schedule: "0 * * * *"  # Every hour (cron format, 6-field with seconds)
     #   command: "memory-consolidate"
     #   enabled: true
+    #
+    # Channel delivery job (sends a message directly via connected channel):
+    # - name: "good-morning"
+    #   schedule: "0 0 6 * * *"  # Every day at 06:00
+    #   enabled: true
+    #   deliver:
+    #     channel: "whatsapp"
+    #     channelId: "6283111043962@s.whatsapp.net"
+    #     message: "Selamat Pagi!"
+    #
+    # Command + delivery (run command, send stdout to channel):
+    # - name: "daily-report"
+    #   schedule: "0 0 8 * * *"
+    #   command: "cat /tmp/daily-report.txt"
+    #   enabled: true
+    #   deliver:
+    #     channel: "telegram"
+    #     channelId: "123456789"
 
 # === Phase 3: Orchestrator ===
 orchestrator:

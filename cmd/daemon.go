@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -388,7 +389,7 @@ func runDaemon(cmd *cobra.Command, args []string) error {
 	daemonRegistry.Register(healthSubsystem)
 	schedulerSubsystem := scheduler.NewSchedulerSubsystem(cfg.Scheduler)
 	schedulerSubsystem.WithChecker(daemonRegistryChecker{reg: daemonRegistry, bus: bus})
-	schedulerSubsystem.WithExecutor(&scheduler.ShellExecutor{})
+	schedulerSubsystem.WithExecutor(&scheduler.ChannelExecutor{Sender: bus, Shell: &scheduler.ShellExecutor{}})
 	schedulerSubsystem.WithReconnector(&busReconnector{bus: bus})
 	daemonRegistry.Register(schedulerSubsystem)
 	dashboardSubsystem := dashboard.NewServer(cfg.Dashboard, dashboard.DashboardDeps{
@@ -428,6 +429,44 @@ func runDaemon(cmd *cobra.Command, args []string) error {
 		}
 	}
 	phase3Lifecycle := daemonruntime.NewLifecycleManager(schedulerSubsystem, dashboardSubsystem)
+
+	// Register /api/channels/send endpoint on the health server for CLI and agent use.
+	healthSubsystem.HandleFunc("/api/channels/send", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+			return
+		}
+		var req struct {
+			Channel   string `json:"channel"`
+			ChannelID string `json:"channelId"`
+			Message   string `json:"message"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, `{"error":"invalid JSON"}`, http.StatusBadRequest)
+			return
+		}
+		if req.Channel == "" || req.ChannelID == "" || req.Message == "" {
+			http.Error(w, `{"error":"channel, channelId, and message are required"}`, http.StatusBadRequest)
+			return
+		}
+		channelType := types.ChannelType(req.Channel)
+		msg := types.Message{
+			ID:          fmt.Sprintf("api-send-%d", time.Now().UnixMilli()),
+			ChannelType: channelType,
+			ChannelID:   req.ChannelID,
+			Content:     req.Message,
+			Timestamp:   time.Now(),
+		}
+		if err := bus.Send(r.Context(), channelType, msg); err != nil {
+			slog.Error("api channels send failed", "channel", req.Channel, "err", err)
+			http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusInternalServerError)
+			return
+		}
+		slog.Info("api channels send ok", "channel", req.Channel, "channelId", req.ChannelID)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	})
 
 	if err := bus.Start(ctx); err != nil {
 		return fmt.Errorf("start message bus: %w", err)

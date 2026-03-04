@@ -251,6 +251,7 @@ type DashboardConfig struct {
 type DeliverConfig struct {
 	Channel   string `yaml:"channel"`   // "whatsapp", "telegram", "discord"
 	ChannelID string `yaml:"channelId"` // chat/channel ID to send to
+	Message   string `yaml:"message"`   // message text to deliver (if empty, delivers command stdout)
 }
 
 // ScheduledJob represents a single scheduled job configuration.

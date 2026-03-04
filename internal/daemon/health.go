@@ -45,6 +45,7 @@ type HealthSubsystem struct {
 
 	mu      sync.RWMutex
 	server  *http.Server
+	mux     *http.ServeMux
 	errCh   chan error
 	status  string
 	message string
@@ -87,9 +88,16 @@ func NewHealthSubsystem(addr, service string, opts ...HealthOption) *HealthSubsy
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", h.handleHealth)
+	h.mux = mux
 	h.server = &http.Server{Addr: addr, Handler: mux}
 
 	return h
+}
+
+// HandleFunc registers an additional HTTP handler on the health server's mux.
+// Must be called before Start().
+func (h *HealthSubsystem) HandleFunc(pattern string, handler http.HandlerFunc) {
+	h.mux.HandleFunc(pattern, handler)
 }
 
 func (h *HealthSubsystem) handleHealth(w http.ResponseWriter, r *http.Request) {
