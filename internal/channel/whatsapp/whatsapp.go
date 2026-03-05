@@ -397,8 +397,55 @@ func convertEvent(evt *events.Message) (itypes.Message, bool) {
 			text = ext.GetText()
 		}
 	}
+
+	// Handle image/video/document messages — extract caption only (no binary processing)
+	if text == "" {
+		if img := evt.Message.GetImageMessage(); img != nil {
+			text = img.GetCaption()
+			if text == "" {
+				text = "[Image received — no caption provided]"
+			}
+		}
+	}
+	if text == "" {
+		if vid := evt.Message.GetVideoMessage(); vid != nil {
+			text = vid.GetCaption()
+			if text == "" {
+				text = "[Video received — no caption provided]"
+			}
+		}
+	}
+	if text == "" {
+		if doc := evt.Message.GetDocumentMessage(); doc != nil {
+			text = doc.GetCaption()
+			if text == "" {
+				text = fmt.Sprintf("[Document received: %s]", doc.GetFileName())
+			}
+		}
+	}
+
 	if text == "" {
 		return itypes.Message{}, false
+	}
+
+	// Extract quoted message content for reply context
+	var quotedText string
+	if ext := evt.Message.GetExtendedTextMessage(); ext != nil {
+		if ctxInfo := ext.GetContextInfo(); ctxInfo != nil {
+			if quoted := ctxInfo.GetQuotedMessage(); quoted != nil {
+				quotedText = quoted.GetConversation()
+				if quotedText == "" {
+					if qExt := quoted.GetExtendedTextMessage(); qExt != nil {
+						quotedText = qExt.GetText()
+					}
+				}
+			}
+		}
+	}
+
+	content := text
+	if quotedText != "" {
+		content = fmt.Sprintf("[Replying to: %s]\n\n%s", quotedText, text)
 	}
 
 	return itypes.Message{
@@ -406,7 +453,7 @@ func convertEvent(evt *events.Message) (itypes.Message, bool) {
 		ChannelType: itypes.ChannelWhatsApp,
 		ChannelID:   evt.Info.Chat.String(),
 		UserID:      evt.Info.Sender.String(),
-		Content:     text,
+		Content:     content,
 		Timestamp:   evt.Info.Timestamp,
 	}, true
 }
