@@ -267,6 +267,9 @@ func runDaemon(cmd *cobra.Command, args []string) error {
 		tools.RegisterMemoryTools(registry, coreStore, sqliteMemStore, embedClient, "default")
 		slog.Info("memory tools registered (core + archival)")
 	}
+	if costTracker != nil {
+		registry.Register(tools.NewUsageTool(costTracker))
+	}
 
 	mcpClient := mcp.NewClient()
 	for _, serverCfg := range cfg.MCP.Servers {

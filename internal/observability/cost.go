@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"sync"
+	"time"
 )
 
 // pricePerMInputTokens maps model names to cost per 1M input tokens (USD).
@@ -17,6 +18,8 @@ var pricePerMInputTokens = map[string]float64{
 	"claude-3-opus":     15.0,
 	"gemini-1.5-pro":    1.25,
 	"gemini-1.5-flash":  0.075,
+	"gpt-5-mini":    0.15,
+	"gpt-4.1-mini":  0.15,
 }
 
 // pricePerMOutputTokens maps model names to cost per 1M output tokens (USD).
@@ -29,6 +32,8 @@ var pricePerMOutputTokens = map[string]float64{
 	"claude-3-opus":     75.0,
 	"gemini-1.5-pro":    5.00,
 	"gemini-1.5-flash":  0.30,
+	"gpt-5-mini":    0.60,
+	"gpt-4.1-mini":  0.60,
 }
 
 const (
@@ -133,6 +138,36 @@ func (t *CostTracker) UserSummary(ctx context.Context, userID string) ([]ModelUs
 	return results, rows.Err()
 }
 
+// UserSummarySince returns aggregate usage for a user since a given time, grouped by model and provider.
+func (t *CostTracker) UserSummarySince(ctx context.Context, userID string, since time.Time) ([]ModelUsage, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	rows, err := t.db.QueryContext(ctx,
+		`SELECT model, provider, SUM(input_tokens), SUM(output_tokens), COUNT(*)
+		 FROM token_usage
+		 WHERE user_id = ? AND recorded_at >= ?
+		 GROUP BY model, provider
+		 ORDER BY model`,
+		userID, since,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("observability: user summary since: %w", err)
+	}
+	defer rows.Close()
+
+	var results []ModelUsage
+	for rows.Next() {
+		var mu ModelUsage
+		if err := rows.Scan(&mu.Model, &mu.Provider, &mu.TotalInputTokens, &mu.TotalOutputTokens, &mu.CallCount); err != nil {
+			return nil, fmt.Errorf("observability: scan user summary since: %w", err)
+		}
+		mu.EstimatedCostUSD = estimateCost(mu.Model, mu.TotalInputTokens, mu.TotalOutputTokens)
+		results = append(results, mu)
+	}
+	return results, rows.Err()
+}
+
 // AllSummary returns usage for all users, grouped by user, model, and provider.
 func (t *CostTracker) AllSummary(ctx context.Context) ([]UserModelUsage, error) {
 	t.mu.Lock()
@@ -154,6 +189,36 @@ func (t *CostTracker) AllSummary(ctx context.Context) ([]UserModelUsage, error) 
 		var umu UserModelUsage
 		if err := rows.Scan(&umu.UserID, &umu.Model, &umu.Provider, &umu.TotalInputTokens, &umu.TotalOutputTokens, &umu.CallCount); err != nil {
 			return nil, fmt.Errorf("observability: scan all summary: %w", err)
+		}
+		umu.EstimatedCostUSD = estimateCost(umu.Model, umu.TotalInputTokens, umu.TotalOutputTokens)
+		results = append(results, umu)
+	}
+	return results, rows.Err()
+}
+
+// AllSummarySince returns aggregate usage for all users since a given time.
+func (t *CostTracker) AllSummarySince(ctx context.Context, since time.Time) ([]UserModelUsage, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	rows, err := t.db.QueryContext(ctx,
+		`SELECT user_id, model, provider, SUM(input_tokens), SUM(output_tokens), COUNT(*)
+		 FROM token_usage
+		 WHERE recorded_at >= ?
+		 GROUP BY user_id, model, provider
+		 ORDER BY user_id, model`,
+		since,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("observability: all summary since: %w", err)
+	}
+	defer rows.Close()
+
+	var results []UserModelUsage
+	for rows.Next() {
+		var umu UserModelUsage
+		if err := rows.Scan(&umu.UserID, &umu.Model, &umu.Provider, &umu.TotalInputTokens, &umu.TotalOutputTokens, &umu.CallCount); err != nil {
+			return nil, fmt.Errorf("observability: scan all summary since: %w", err)
 		}
 		umu.EstimatedCostUSD = estimateCost(umu.Model, umu.TotalInputTokens, umu.TotalOutputTokens)
 		results = append(results, umu)
