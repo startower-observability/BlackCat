@@ -188,6 +188,63 @@ func TestExecToolWorkdir(t *testing.T) {
 	}
 }
 
+func TestExecToolParamTimeout(t *testing.T) {
+	dl := security.NewDenyList()
+	tool := NewExecTool(dl, "", 1*time.Second) // default 1s
+
+	var cmd string
+	if runtime.GOOS == "windows" {
+		cmd = "ping -n 1000 127.0.0.1"
+	} else {
+		cmd = "sleep 100"
+	}
+
+	// Even though tool default is 1s, the param timeout of 3s should be used.
+	// But the command still runs too long, so it should timeout at 3s.
+	args := mustJSON(map[string]any{"command": cmd, "timeout": 2})
+	_, err := tool.Execute(context.Background(), args)
+	if err == nil {
+		t.Fatal("expected timeout error, got nil")
+	}
+}
+
+func TestExecToolParamTimeoutMax(t *testing.T) {
+	dl := security.NewDenyList()
+	tool := NewExecTool(dl, "", 10*time.Second)
+
+	// Requesting timeout > 600 should be capped at 600.
+	// We just verify it doesn't panic or error for valid commands.
+	args := mustJSON(map[string]any{"command": "echo capped", "timeout": 9999})
+	result, err := tool.Execute(context.Background(), args)
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if !strings.Contains(result, "capped") {
+		t.Fatalf("expected output containing 'capped', got %q", result)
+	}
+}
+
+func TestExecToolStdin(t *testing.T) {
+	dl := security.NewDenyList()
+	tool := NewExecTool(dl, "", 10*time.Second)
+
+	var cmd string
+	if runtime.GOOS == "windows" {
+		cmd = "findstr hello"
+	} else {
+		cmd = "cat"
+	}
+
+	args := mustJSON(map[string]any{"command": cmd, "stdin": "hello from stdin"})
+	result, err := tool.Execute(context.Background(), args)
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if !strings.Contains(result, "hello from stdin") {
+		t.Fatalf("expected stdin content in output, got %q", result)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // FilesystemTool tests
 // ---------------------------------------------------------------------------

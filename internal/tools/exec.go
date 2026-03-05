@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os/exec"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/startower-observability/blackcat/internal/security"
@@ -13,9 +14,10 @@ import (
 
 const (
 	defaultExecTimeout  = 60 * time.Second
+	maxExecTimeout      = 600 * time.Second
 	defaultMaxOutput    = 1 << 20 // 1 MB
 	execToolName        = "exec"
-	execToolDescription = "Execute a shell command on the server"
+	execToolDescription = "Execute a shell command on the server. Supports optional timeout (up to 600s) for long-running commands and optional stdin for piping input."
 )
 
 var execToolParameters = json.RawMessage(`{
@@ -28,6 +30,14 @@ var execToolParameters = json.RawMessage(`{
 		"workdir": {
 			"type": "string",
 			"description": "Working directory (optional)"
+		},
+		"timeout": {
+			"type": "integer",
+			"description": "Timeout in seconds (optional, default 60, max 600). Use higher values for long-running commands like builds, OAuth flows, or file downloads."
+		},
+		"stdin": {
+			"type": "string",
+			"description": "Input to pipe to the command via stdin (optional). Use this for commands that require user input."
 		}
 	},
 	"required": ["command"]
@@ -63,6 +73,8 @@ func (t *ExecTool) Execute(ctx context.Context, args json.RawMessage) (string, e
 	var params struct {
 		Command string `json:"command"`
 		Workdir string `json:"workdir"`
+		Timeout int    `json:"timeout"`
+		Stdin   string `json:"stdin"`
 	}
 	if err := json.Unmarshal(args, &params); err != nil {
 		return "", fmt.Errorf("exec: invalid arguments: %w", err)
@@ -76,8 +88,17 @@ func (t *ExecTool) Execute(ctx context.Context, args json.RawMessage) (string, e
 		return "", err
 	}
 
+	// Determine timeout: use param if provided, otherwise use default.
+	timeout := t.timeout
+	if params.Timeout > 0 {
+		timeout = time.Duration(params.Timeout) * time.Second
+		if timeout > maxExecTimeout {
+			timeout = maxExecTimeout
+		}
+	}
+
 	// Build the command with a timeout-scoped context.
-	timeoutCtx, cancel := context.WithTimeout(ctx, t.timeout)
+	timeoutCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	var cmd *exec.Cmd
@@ -95,6 +116,11 @@ func (t *ExecTool) Execute(ctx context.Context, args json.RawMessage) (string, e
 		cmd.Dir = params.Workdir
 	} else if t.workDir != "" {
 		cmd.Dir = t.workDir
+	}
+
+	// Pipe stdin if provided.
+	if params.Stdin != "" {
+		cmd.Stdin = strings.NewReader(params.Stdin)
 	}
 
 	output, err := cmd.CombinedOutput()
