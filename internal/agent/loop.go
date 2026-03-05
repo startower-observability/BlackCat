@@ -280,13 +280,29 @@ func (l *Loop) processOneTurn(ctx context.Context, execution *Execution, toolDef
 	execution.TotalUsage.CompletionTokens += resp.Usage.CompletionTokens
 	execution.TotalUsage.TotalTokens += resp.Usage.TotalTokens
 
-	span.InputTokens = resp.Usage.PromptTokens
-	span.OutputTokens = resp.Usage.CompletionTokens
+	// Fallback: estimate tokens when the provider returns zero (e.g. GitHub Copilot)
+	promptTokens := resp.Usage.PromptTokens
+	completionTokens := resp.Usage.CompletionTokens
+	if promptTokens == 0 && completionTokens == 0 {
+		var inputText strings.Builder
+		for _, m := range execution.Messages {
+			inputText.WriteString(m.Content)
+		}
+		promptTokens = llm.EstimateTokens(inputText.String())
+		completionTokens = llm.EstimateTokens(resp.Content)
+		// Also update execution totals with estimates
+		execution.TotalUsage.PromptTokens += promptTokens
+		execution.TotalUsage.CompletionTokens += completionTokens
+		execution.TotalUsage.TotalTokens += promptTokens + completionTokens
+	}
+
+	span.InputTokens = promptTokens
+	span.OutputTokens = completionTokens
 
 	// Record token cost if tracker is available
 	if l.costTracker != nil {
 		_ = l.costTracker.Record(ctx, l.userID, "", l.modelName, l.providerName,
-			resp.Usage.PromptTokens, resp.Usage.CompletionTokens)
+			promptTokens, completionTokens)
 	}
 
 	execution.TurnCount++

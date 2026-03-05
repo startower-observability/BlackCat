@@ -54,8 +54,8 @@ func IsAmbiguous(msg string) bool {
 	if charCount < 10 {
 		// Allow simple greetings and common short commands
 		shortAllowed := []string{
-			"hello", "hi", "hey", "halo", "status", "help",
-			"ping", "yes", "no", "ok", "stop", "restart",
+			"hello", "hi", "hey", "halo", "/status", "status", "/help", "help",
+			"/ping", "ping", "yes", "no", "ok", "stop", "restart",
 		}
 		for _, allowed := range shortAllowed {
 			if lower == allowed {
