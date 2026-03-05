@@ -27,6 +27,7 @@ func TestInitWorkspace(t *testing.T) {
 		filepath.Join("skills", "opencode-start-work.md"),
 		filepath.Join("skills", "opencode-handoff.md"),
 		filepath.Join("skills", "pinchtab-browsing.md"),
+		filepath.Join("skills", "opencode-commands.md"),
 	}
 
 	for _, file := range expectedFiles {
@@ -95,6 +96,7 @@ func TestInitWorkspaceSubdirs(t *testing.T) {
 		"opencode-start-work.md",
 		"opencode-handoff.md",
 		"pinchtab-browsing.md",
+		"opencode-commands.md",
 	}
 	for _, skill := range expectedSkills {
 		path := filepath.Join(skillsDir, skill)
@@ -113,7 +115,7 @@ func TestListTemplates(t *testing.T) {
 	}
 
 	// Check for expected templates
-	expectedCount := 10 // AGENTS.md, SOUL.md, MEMORY.md, and seven skill templates
+	expectedCount := 11 // AGENTS.md, SOUL.md, MEMORY.md, and eight skill templates
 	if len(templates) != expectedCount {
 		t.Errorf("expected %d templates, got %d", expectedCount, len(templates))
 	}
@@ -136,6 +138,7 @@ func TestListTemplates(t *testing.T) {
 		"skills/opencode-start-work.md",
 		"skills/opencode-handoff.md",
 		"skills/pinchtab-browsing.md",
+		"skills/opencode-commands.md",
 	}
 
 	for _, exp := range expected {
