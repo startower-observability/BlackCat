@@ -18,8 +18,22 @@ exec: opencode run "analisis file ini" --format json
 ### Cara 2: Via `opencode_task` Tool (Session panjang)
 Untuk task coding yang butuh waktu lama: /ulw-loop, /start-work, analisis codebase.
 ```json
-opencode_task: {"prompt": "/ulw-loop\n\nImplementasi fitur auth", "dir": "~/project"}
+opencode_task: {"prompt": "/ulw-loop\n\nImplementasi fitur auth", "dir": "/path/ke/project"}
 ```
+
+### ⚠️ WAJIB: Tentukan `dir` yang Benar!
+`dir` HARUS diisi dengan path project yang tepat. Tanpa `dir`, OpenCode jalan di ~ dan tidak bisa menemukan file project.
+
+**Cara menentukan `dir` secara dinamis:**
+1. Jika user baru clone repo → gunakan path hasil clone (misal: `~/repo-name`)
+2. Jika user sebut nama project → cari dulu lokasi nya:
+   ```
+   exec: find ~ -maxdepth 3 -name '.git' -type d 2>/dev/null
+   ```
+3. Jika sudah pernah kerja di project → cek memory untuk path yang tersimpan
+4. Jika ragu → TANYA user: "Di folder mana project-nya?"
+
+**JANGAN pernah** kirim opencode_task tanpa `dir` — hasilnya OpenCode akan analisa home directory, bukan project.
 
 ---
 

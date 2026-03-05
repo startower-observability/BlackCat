@@ -13,7 +13,7 @@ import (
 const (
 	defaultOpenCodeTimeout  = 30 * time.Minute
 	openCodeToolName        = "opencode_task"
-	openCodeToolDescription = "Delegate a coding task to OpenCode. Use this for code generation, refactoring, debugging, and complex code changes."
+	openCodeToolDescription = "Delegate a coding task to OpenCode. Use this for code generation, refactoring, debugging, and complex code changes. CRITICAL: You MUST specify 'dir' with the project directory path. Without it, OpenCode runs in ~ and cannot find project files. Determine the correct dir from context: if user cloned a repo, use that clone path. If unsure, use exec to find it first (e.g. find ~ -maxdepth 3 -name '.git' -type d)."
 )
 
 var openCodeToolParameters = json.RawMessage(`{
@@ -25,7 +25,7 @@ var openCodeToolParameters = json.RawMessage(`{
 		},
 		"dir": {
 			"type": "string",
-			"description": "Working directory for the task (optional)"
+			"description": "Project directory path (REQUIRED). OpenCode needs this to find project files. Determine from context: after git clone use that path, or find it with 'find ~ -maxdepth 3 -name .git -type d'."
 		},
 		"session_id": {
 			"type": "string",
