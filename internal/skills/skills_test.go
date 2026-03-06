@@ -382,3 +382,126 @@ This skill is ineligible.`
 		t.Errorf("expected 'Eligible Skill', got '%s'", skills[0].Name)
 	}
 }
+
+// TestFilterByFileSize tests filtering skills by content size.
+func TestFilterByFileSize(t *testing.T) {
+	skills := []Skill{
+		{Name: "small", Content: "abc"},                    // 3 bytes
+		{Name: "medium", Content: "abcdefghij"},            // 10 bytes
+		{Name: "large", Content: strings.Repeat("x", 100)}, // 100 bytes
+	}
+
+	t.Run("filters out skills exceeding maxBytes", func(t *testing.T) {
+		result := FilterByFileSize(skills, 10)
+		if len(result) != 2 {
+			t.Fatalf("expected 2 skills, got %d", len(result))
+		}
+		if result[0].Name != "small" || result[1].Name != "medium" {
+			t.Fatalf("expected [small, medium], got [%s, %s]", result[0].Name, result[1].Name)
+		}
+	})
+
+	t.Run("includes skills exactly at maxBytes", func(t *testing.T) {
+		result := FilterByFileSize(skills, 3)
+		if len(result) != 1 {
+			t.Fatalf("expected 1 skill at exactly 3 bytes, got %d", len(result))
+		}
+		if result[0].Name != "small" {
+			t.Fatalf("expected 'small', got '%s'", result[0].Name)
+		}
+	})
+
+	t.Run("maxBytes zero returns all skills", func(t *testing.T) {
+		result := FilterByFileSize(skills, 0)
+		if len(result) != 3 {
+			t.Fatalf("expected 3 skills with maxBytes=0, got %d", len(result))
+		}
+	})
+
+	t.Run("maxBytes negative returns all skills", func(t *testing.T) {
+		result := FilterByFileSize(skills, -1)
+		if len(result) != 3 {
+			t.Fatalf("expected 3 skills with maxBytes=-1, got %d", len(result))
+		}
+	})
+
+	t.Run("empty skills slice returns empty", func(t *testing.T) {
+		result := FilterByFileSize([]Skill{}, 100)
+		if len(result) != 0 {
+			t.Fatalf("expected 0 skills for empty input, got %d", len(result))
+		}
+	})
+
+	t.Run("large maxBytes returns all", func(t *testing.T) {
+		result := FilterByFileSize(skills, 1000)
+		if len(result) != 3 {
+			t.Fatalf("expected 3 skills with large maxBytes, got %d", len(result))
+		}
+	})
+}
+
+// TestLimitSkillCount tests limiting the number of skills returned.
+func TestLimitSkillCount(t *testing.T) {
+	skills := []Skill{
+		{Name: "a"},
+		{Name: "b"},
+		{Name: "c"},
+		{Name: "d"},
+		{Name: "e"},
+	}
+
+	t.Run("maxCount zero returns all", func(t *testing.T) {
+		result := LimitSkillCount(skills, 0)
+		if len(result) != 5 {
+			t.Fatalf("expected 5 skills with maxCount=0, got %d", len(result))
+		}
+	})
+
+	t.Run("maxCount negative returns all", func(t *testing.T) {
+		result := LimitSkillCount(skills, -1)
+		if len(result) != 5 {
+			t.Fatalf("expected 5 skills with maxCount=-1, got %d", len(result))
+		}
+	})
+
+	t.Run("maxCount less than len truncates", func(t *testing.T) {
+		result := LimitSkillCount(skills, 3)
+		if len(result) != 3 {
+			t.Fatalf("expected 3 skills, got %d", len(result))
+		}
+		if result[0].Name != "a" || result[1].Name != "b" || result[2].Name != "c" {
+			t.Fatalf("expected [a, b, c], got [%s, %s, %s]", result[0].Name, result[1].Name, result[2].Name)
+		}
+	})
+
+	t.Run("maxCount equal to len returns all", func(t *testing.T) {
+		result := LimitSkillCount(skills, 5)
+		if len(result) != 5 {
+			t.Fatalf("expected 5 skills with maxCount=len, got %d", len(result))
+		}
+	})
+
+	t.Run("maxCount greater than len returns all", func(t *testing.T) {
+		result := LimitSkillCount(skills, 10)
+		if len(result) != 5 {
+			t.Fatalf("expected 5 skills with maxCount>len, got %d", len(result))
+		}
+	})
+
+	t.Run("empty skills slice returns empty", func(t *testing.T) {
+		result := LimitSkillCount([]Skill{}, 5)
+		if len(result) != 0 {
+			t.Fatalf("expected 0 skills for empty input, got %d", len(result))
+		}
+	})
+
+	t.Run("maxCount 1 returns first skill only", func(t *testing.T) {
+		result := LimitSkillCount(skills, 1)
+		if len(result) != 1 {
+			t.Fatalf("expected 1 skill, got %d", len(result))
+		}
+		if result[0].Name != "a" {
+			t.Fatalf("expected 'a', got '%s'", result[0].Name)
+		}
+	})
+}

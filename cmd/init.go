@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 
@@ -37,6 +38,12 @@ func runInit(cmd *cobra.Command, args []string) error {
 	// Initialize workspace using the workspace package
 	if err := workspace.InitWorkspace(targetDir); err != nil {
 		return fmt.Errorf("failed to initialize workspace: %w", err)
+	}
+
+	// Create marketplace directory
+	marketplaceDir := filepath.Join(targetDir, "marketplace")
+	if err := os.MkdirAll(marketplaceDir, 0755); err != nil {
+		slog.Warn("failed to create marketplace directory", "path", marketplaceDir, "error", err)
 	}
 
 	// Create example config file if it doesn't exist
@@ -96,6 +103,7 @@ logging:
 	fmt.Println("  - SOUL.md")
 	fmt.Println("  - MEMORY.md")
 	fmt.Println("  - skills/ (directory)")
+	fmt.Println("  - marketplace/ (directory)")
 	fmt.Println("  - blackcat.yaml")
 	fmt.Println("\nNext steps:")
 	fmt.Println("  1. Edit blackcat.yaml with your configuration")

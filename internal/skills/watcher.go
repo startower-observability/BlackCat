@@ -1,17 +1,19 @@
 package skills
 
 import (
+	"fmt"
 	"log/slog"
+	"os"
 	"sync"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
 )
 
-// SkillWatcher watches a skills directory for file changes and triggers a
-// reload callback with debouncing.
+// SkillWatcher watches one or more skills directories for file changes and
+// triggers a reload callback with debouncing.
 type SkillWatcher struct {
-	dir      string
+	dirs     []string
 	debounce time.Duration
 	onReload func([]Skill)
 	watcher  *fsnotify.Watcher
@@ -19,18 +21,24 @@ type SkillWatcher struct {
 	mu       sync.Mutex
 }
 
-// NewSkillWatcher creates a new watcher for the given skills directory.
+// NewSkillWatcher creates a new watcher for the given skills directories.
 // The onReload callback receives the freshly loaded skills slice whenever
-// a file change is detected (after debouncing).
-func NewSkillWatcher(dir string, debounce time.Duration, onReload func([]Skill)) (*SkillWatcher, error) {
+// a file change is detected (after debouncing). Non-existent directories
+// are skipped with a warning.
+func NewSkillWatcher(dirs []string, debounce time.Duration, onReload func([]Skill)) (*SkillWatcher, error) {
 	w, err := fsnotify.NewWatcher()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("create fsnotify watcher: %w", err)
 	}
 
-	if err := w.Add(dir); err != nil {
-		w.Close()
-		return nil, err
+	for _, dir := range dirs {
+		if _, err := os.Stat(dir); err != nil {
+			slog.Warn("skill watcher: skipping non-existent dir", "dir", dir)
+			continue
+		}
+		if err := w.Add(dir); err != nil {
+			slog.Warn("skill watcher: failed to watch dir", "dir", dir, "error", err)
+		}
 	}
 
 	if debounce <= 0 {
@@ -38,7 +46,7 @@ func NewSkillWatcher(dir string, debounce time.Duration, onReload func([]Skill))
 	}
 
 	return &SkillWatcher{
-		dir:      dir,
+		dirs:     dirs,
 		debounce: debounce,
 		onReload: onReload,
 		watcher:  w,
@@ -71,13 +79,13 @@ func (sw *SkillWatcher) Run() {
 			debounceTimer.Reset(sw.debounce)
 
 		case <-debounceTimer.C:
-			skills, err := LoadSkills(sw.dir)
+			skills, err := LoadSkillsFromMultipleSources(sw.dirs)
 			if err != nil {
-				slog.Warn("skill hot-reload failed", "dir", sw.dir, "err", err)
+				slog.Warn("skill hot-reload failed", "dirs", sw.dirs, "err", err)
 				continue
 			}
 
-			slog.Info("skills hot-reloaded", "dir", sw.dir, "count", len(skills))
+			slog.Info("skills hot-reloaded", "dirs", sw.dirs, "count", len(skills))
 
 			sw.mu.Lock()
 			cb := sw.onReload

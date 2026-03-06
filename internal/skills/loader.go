@@ -89,10 +89,10 @@ func parseSkillFile(content string, filePath string, filename string) Skill {
 	skill := Skill{
 		FilePath: filePath,
 	}
-	
+
 	// Try to parse YAML frontmatter first
 	fm, body, hasFrontmatter := ParseFrontmatter(content)
-	
+
 	if hasFrontmatter {
 		// If frontmatter present, use it for metadata
 		if fm.Name != "" {
@@ -106,7 +106,7 @@ func parseSkillFile(content string, filePath string, filename string) Skill {
 		}
 		skill.Requires = fm.Requires
 		skill.Content = body
-		
+
 		// If name not set from frontmatter, fall through to header parsing
 		if skill.Name == "" {
 			// Parse name from body content if not in frontmatter
@@ -119,22 +119,22 @@ func parseSkillFile(content string, filePath string, filename string) Skill {
 				}
 			}
 		}
-		
+
 		// If still no name, use filename
 		if skill.Name == "" {
 			skill.Name = strings.TrimSuffix(filename, filepath.Ext(filename))
 		}
 		return skill
 	}
-	
+
 	// Fall back to original parsing logic for non-frontmatter skills (G3)
 	// This ensures perfect backward compatibility
 	lines := strings.Split(content, "\n")
-	
+
 	// Extract name from first # heading line, or use filename
 	nameFound := false
 	contentStartIdx := 0
-	
+
 	for i, line := range lines {
 		if strings.HasPrefix(line, "# ") {
 			skill.Name = strings.TrimPrefix(line, "# ")
@@ -144,12 +144,12 @@ func parseSkillFile(content string, filePath string, filename string) Skill {
 			break
 		}
 	}
-	
+
 	// If no heading found, use filename without extension
 	if !nameFound {
 		skill.Name = strings.TrimSuffix(filename, filepath.Ext(filename))
 	}
-	
+
 	// Parse tags from "Tags:" or "**Tags**:" line
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
@@ -162,7 +162,7 @@ func parseSkillFile(content string, filePath string, filename string) Skill {
 				tagsStr = strings.TrimPrefix(trimmed, "Tags:")
 			}
 			tagsStr = strings.TrimSpace(tagsStr)
-			
+
 			// Parse comma-separated tags
 			if tagsStr != "" {
 				tagParts := strings.Split(tagsStr, ",")
@@ -176,7 +176,7 @@ func parseSkillFile(content string, filePath string, filename string) Skill {
 			break
 		}
 	}
-	
+
 	// Content is everything after the first heading line
 	if contentStartIdx > 0 && contentStartIdx < len(lines) {
 		skill.Content = strings.Join(lines[contentStartIdx:], "\n")
@@ -191,8 +191,8 @@ func parseSkillFile(content string, filePath string, filename string) Skill {
 		// No heading found, use all content
 		skill.Content = strings.TrimSpace(content)
 	}
-	
-return skill
+
+	return skill
 }
 
 // LoadSkillsFromMultipleSources loads skills from multiple directories with precedence.
@@ -237,4 +237,28 @@ func FormatForInjection(skills []Skill) string {
 	}
 
 	return output.String()
+}
+
+// FilterByFileSize returns skills whose raw content size is at or below maxBytes.
+// Skills exceeding the limit are silently skipped.
+func FilterByFileSize(skills []Skill, maxBytes int) []Skill {
+	if maxBytes <= 0 {
+		return skills
+	}
+	out := make([]Skill, 0, len(skills))
+	for _, s := range skills {
+		if len(s.Content) <= maxBytes {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// LimitSkillCount returns at most maxCount skills from the provided slice.
+// If maxCount is 0 or negative, all skills are returned unchanged.
+func LimitSkillCount(skills []Skill, maxCount int) []Skill {
+	if maxCount <= 0 || len(skills) <= maxCount {
+		return skills
+	}
+	return skills[:maxCount]
 }

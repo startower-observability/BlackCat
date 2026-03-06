@@ -179,7 +179,6 @@ func TestStartWithoutCGO(t *testing.T) {
 	}
 }
 
-
 func TestNormalizeE164(t *testing.T) {
 	tests := []struct {
 		input string
@@ -220,16 +219,16 @@ func TestPhoneFromJID(t *testing.T) {
 }
 
 func TestIsAllowed(t *testing.T) {
-	// nil allowFrom = allow all
+	// nil allowFrom = deny all (secure by default)
 	ch := NewWhatsAppChannel("file:test.db", nil)
-	if !ch.isAllowed("628123456789@s.whatsapp.net", "628123456789@s.whatsapp.net", "") {
-		t.Error("nil allowFrom should allow all")
+	if ch.isAllowed("628123456789@s.whatsapp.net", "628123456789@s.whatsapp.net", "") {
+		t.Error("nil allowFrom should deny all (secure by default)")
 	}
 
-	// empty slice = allow all
+	// empty slice = deny all (secure by default)
 	ch = NewWhatsAppChannel("file:test.db", []string{})
-	if !ch.isAllowed("628123456789@s.whatsapp.net", "628123456789@s.whatsapp.net", "") {
-		t.Error("empty allowFrom should allow all")
+	if ch.isAllowed("628123456789@s.whatsapp.net", "628123456789@s.whatsapp.net", "") {
+		t.Error("empty allowFrom should deny all (secure by default)")
 	}
 
 	// wildcard = allow all

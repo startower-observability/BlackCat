@@ -145,3 +145,25 @@ There is NO `blackcat scheduler` CLI subcommand. Configuration is YAML-only.
 - DO install Node.js 18+ if using Google Workspace CLI skill
 - DO run `gws auth setup` before using Google Workspace skill
 - DON'T expect social media skills without setting their env vars
+
+## Built-in Skills (Phase 2)
+
+The following additional built-in skills are available when prerequisites are met:
+
+- veo3-video-gen: Requires uv, ffmpeg, GEMINI_API_KEY
+- nano-banana-pro: Requires uv, GEMINI_API_KEY
+- document-processing: Requires python3
+- capability-evolver: Requires node
+- reddit-scraper: Requires python3
+- prompt-guard: Requires python3
+- marketplace-installer: Requires npx
+
+## Marketplace Integration
+
+- MarketplaceDir config field: path relative to workspace dir (default: "marketplace")
+- AllowExternalInstall config field: bool, default false (security gate for npx installs)
+- MaxSkillsInPrompt config field: max skills injected into LLM context (default: 50)
+- MaxSkillFileBytes config field: max bytes per skill file (default: 262144)
+- Both built-in skills dir and marketplace dir are watched for live reload
+- Skills exceeding MaxSkillFileBytes are silently skipped
+- Skills are deduplicated by name across directories (built-in wins on conflict)

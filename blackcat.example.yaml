@@ -111,6 +111,10 @@ skills:
   # Directory where custom skills are stored
   # Skills are loaded from this directory at startup
   dir: "skills/"
+  marketplace_dir: "marketplace"
+  allow_external_install: false
+  max_skills_in_prompt: 50
+  max_skill_file_bytes: 262144
 
 # Whisper voice-to-text configuration (Groq API)
 # When enabled, voice/audio messages from Telegram, WhatsApp, and Discord

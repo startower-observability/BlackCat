@@ -158,7 +158,11 @@ type MCPServerConfig struct {
 
 // SkillsConfig holds skills directory settings.
 type SkillsConfig struct {
-	Dir string `yaml:"dir"` // e.g., "skills/"
+	Dir                  string `yaml:"dir"`
+	MarketplaceDir       string `yaml:"marketplace_dir"`
+	AllowExternalInstall bool   `yaml:"allow_external_install"`
+	MaxSkillsInPrompt    int    `yaml:"max_skills_in_prompt"`
+	MaxSkillFileBytes    int    `yaml:"max_skill_file_bytes"`
 }
 
 // WhisperConfig holds Groq Whisper voice-to-text configuration.
@@ -376,5 +380,16 @@ func (c *Config) Validate() {
 	}
 	if c.Whisper.MaxFileSizeMB == 0 {
 		c.Whisper.MaxFileSizeMB = 25
+	}
+
+	// Skills defaults
+	if c.Skills.MarketplaceDir == "" {
+		c.Skills.MarketplaceDir = "marketplace"
+	}
+	if c.Skills.MaxSkillsInPrompt == 0 {
+		c.Skills.MaxSkillsInPrompt = 50
+	}
+	if c.Skills.MaxSkillFileBytes == 0 {
+		c.Skills.MaxSkillFileBytes = 262144
 	}
 }

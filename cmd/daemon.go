@@ -336,11 +336,18 @@ func runDaemon(cmd *cobra.Command, args []string) error {
 		slog.Info("mcp server connected", "server", serverCfg.Name, "proxy_tools", registered)
 	}
 
-	loadedSkills, skillErr := skills.LoadSkills(cfg.Skills.Dir)
+	skillDirs := []string{cfg.Skills.Dir}
+	if cfg.Skills.MarketplaceDir != "" {
+		marketplaceAbsDir := filepath.Join(workspaceDir, cfg.Skills.MarketplaceDir)
+		skillDirs = append(skillDirs, marketplaceAbsDir)
+	}
+	loadedSkills, skillErr := skills.LoadSkillsFromMultipleSources(skillDirs)
 	if skillErr != nil {
 		return fmt.Errorf("load skills: %w", skillErr)
 	}
-	slog.Info("skills loaded", "count", len(loadedSkills), "dir", cfg.Skills.Dir)
+	loadedSkills = skills.FilterByFileSize(loadedSkills, cfg.Skills.MaxSkillFileBytes)
+	loadedSkills = skills.LimitSkillCount(loadedSkills, cfg.Skills.MaxSkillsInPrompt)
+	slog.Info("skills loaded", "count", len(loadedSkills), "dirs", skillDirs)
 
 	// Phase 3 (T15): Wire rules engine into hook registry for PostFileRead injection
 	hookRegistry := hooks.NewHookRegistry()
@@ -559,7 +566,14 @@ func runDaemon(cmd *cobra.Command, args []string) error {
 	// Phase 4 (T4): Skill hot-reload via fsnotify
 	var skillWatcher *skills.SkillWatcher
 	if cfg.Skills.Dir != "" {
-		skillWatcher, err = skills.NewSkillWatcher(cfg.Skills.Dir, 500*time.Millisecond, func(newSkills []skills.Skill) {
+		watchDirs := []string{cfg.Skills.Dir}
+		if cfg.Skills.MarketplaceDir != "" {
+			marketplaceAbsDir := filepath.Join(workspaceDir, cfg.Skills.MarketplaceDir)
+			watchDirs = append(watchDirs, marketplaceAbsDir)
+		}
+		skillWatcher, err = skills.NewSkillWatcher(watchDirs, 500*time.Millisecond, func(newSkills []skills.Skill) {
+			newSkills = skills.FilterByFileSize(newSkills, cfg.Skills.MaxSkillFileBytes)
+			newSkills = skills.LimitSkillCount(newSkills, cfg.Skills.MaxSkillsInPrompt)
 			skillsMu.Lock()
 			baseLoopCfg.Skills = newSkills
 			skillsMu.Unlock()
@@ -568,7 +582,7 @@ func runDaemon(cmd *cobra.Command, args []string) error {
 			slog.Warn("skill watcher disabled", "err", err)
 		} else {
 			go skillWatcher.Run()
-			slog.Info("skill watcher started", "dir", cfg.Skills.Dir)
+			slog.Info("skill watcher started", "dirs", watchDirs)
 		}
 	}
 

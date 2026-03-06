@@ -171,6 +171,34 @@ var doctorCmd = &cobra.Command{
 			}
 		}
 
+		// Check 10: Marketplace directory.
+		marketplaceDir := viper.GetString("skills.marketplace_dir")
+		if marketplaceDir == "" {
+			marketplaceDir = "marketplace"
+		}
+		fullMarketplacePath := filepath.Join(home, ".blackcat", marketplaceDir)
+		if info, err := os.Stat(fullMarketplacePath); err != nil {
+			printWarn(fmt.Sprintf("Marketplace directory not found (%s) — run 'blackcat init' to create it", fullMarketplacePath))
+			warned++
+		} else if !info.IsDir() {
+			printFail(fmt.Sprintf("Marketplace path exists but is not a directory (%s)", fullMarketplacePath))
+			failed++
+		} else {
+			printCheck(true, fmt.Sprintf("Marketplace directory found (%s)", fullMarketplacePath))
+			passed++
+		}
+
+		// Check 11: npx availability (only if allow_external_install is true).
+		if viper.GetBool("skills.allow_external_install") {
+			if _, err := exec.LookPath("npx"); err != nil {
+				printFail("npx not found — required for marketplace skill installation (allow_external_install is true)")
+				failed++
+			} else {
+				printCheck(true, "npx available for marketplace skill installation")
+				passed++
+			}
+		}
+
 		// Summary.
 		fmt.Println()
 		fmt.Printf("  %d passed, %d warnings, %d failed\n", passed, warned, failed)

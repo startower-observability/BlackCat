@@ -115,7 +115,7 @@ func TestListTemplates(t *testing.T) {
 	}
 
 	// Check for expected templates
-	expectedCount := 17 // AGENTS.md, SOUL.md, MEMORY.md, and fourteen skill templates
+	expectedCount := 24 // AGENTS.md, SOUL.md, MEMORY.md, and twenty-one skill templates (14 original + 7 Phase 2)
 	if len(templates) != expectedCount {
 		t.Errorf("expected %d templates, got %d", expectedCount, len(templates))
 	}

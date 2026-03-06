@@ -102,7 +102,42 @@ See [`blackcat.example.yaml`](blackcat.example.yaml) for the full reference.
 | TikTok | `TIKTOK_ACCESS_TOKEN` | TikTok Content API token |
 | Google Workspace | `gws` CLI (Node 18+) | `gws auth setup` |
 
+### Phase 2 Skills
+
+| Skill | Requires | Description |
+|-------|----------|-------------|
+| `veo3-video-gen` | `uv`, `ffmpeg`, `GEMINI_API_KEY` | Generate videos with Google Veo 3 |
+| `nano-banana-pro` | `uv`, `GEMINI_API_KEY` | Generate/edit images with Gemini |
+| `document-processing` | `python3` | Extract text from PDF/DOCX/XLSX/PPTX |
+| `capability-evolver` | `node` | Self-evolution: propose and register new skills |
+| `reddit-scraper` | `python3` | Scrape Reddit posts/comments via public JSON |
+| `prompt-guard` | `python3` | Detect and neutralize prompt injection attacks |
+| `marketplace-installer` | `npx` | Install/manage marketplace skills |
+
 Skills are silently skipped when prerequisites are not met. Run `blackcat doctor` to check.
+
+## 🛒 Skills Marketplace
+
+The marketplace lets you install community skills into `~/.blackcat/marketplace/`. Skills in the marketplace directory are automatically loaded alongside built-in skills.
+
+### Install a marketplace skill
+
+```bash
+npx blackcat-skill install <skill-name>
+```
+
+### Marketplace directory structure
+
+```
+~/.blackcat/
+  skills/         # built-in skills (managed by blackcat)
+  marketplace/    # community skills (managed by you)
+```
+
+### Requirements
+
+- `npx` — for installing marketplace skills
+- `allow_external_install: true` in config (disabled by default for security)
 
 ## Requirements
 
