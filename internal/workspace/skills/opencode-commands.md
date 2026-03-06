@@ -124,3 +124,80 @@ Jika exec timeout (task sangat lama >600s), gunakan opencode_task sebagai fallba
 opencode_task: {"prompt": "/ulw-loop\n\nDeskripsi task", "dir": "/path/ke/project"}
 
 opencode_task cocok untuk task yang butuh lebih dari 10 menit.
+
+---
+
+## Long-Running Tasks dengan opencode_task_async
+
+Gunakan `opencode_task_async` untuk task yang sangat lama (>10 menit) atau background processing.
+
+### Perbedaan: opencode_task vs opencode_task_async
+
+| Tool | Cara Kerja | Gunakan Saat |
+|------|------------|--------------|
+| opencode_task | Blocking, tunggu sampai selesai | Task < 10 menit, butuh hasil langsung |
+| opencode_task_async | Non-blocking, return task ID | Task > 10 menit, background processing |
+
+### Cara Pakai opencode_task_async
+
+```
+opencode_task_async: {"prompt": "Refactor semua service layer", "dir": "/home/user/project", "recipient_id": "+628123456789"}
+```
+
+Parameter:
+- prompt (WAJIB): Deskripsi task
+- dir (WAJIB): Path project absolute
+- recipient_id (optional): Nomor WhatsApp untuk notifikasi saat selesai (format: +628xxx)
+
+### Pattern yang Benar
+
+**Langkah 1: Start task async**
+```
+Task dimulai dengan ID: 42. Cek status dengan check_opencode_status.
+```
+
+**Langkah 2: Cek status (WAJIB sebelum claim apa pun)**
+```
+check_opencode_status: {"session_id": "ses_xxx"}
+```
+
+**Langkah 3: Report berdasarkan hasil check**
+```
+Sesi masih aktif, task sedang berjalan.
+atau
+Task selesai. Hasil: ...
+```
+
+### Notification Otomatis dengan recipient_id
+
+Set `recipient_id` ke nomor WhatsApp user, mereka akan dapat notifikasi otomatis saat task selesai:
+
+```
+User request task lama. Response:
+"Task dimulai (ID: 42). Kamu akan dapat notifikasi WhatsApp saat selesai."
+```
+
+### Contoh Lengkap Workflow
+
+```
+User: "Refactor seluruh codebase ke clean architecture"
+
+Agent:
+1. opencode_task_async: {"prompt": "Refactor ke clean architecture...", "dir": "/project", "recipient_id": "+628xxx"}
+2. Response: "Task refactoring dimulai (ID: 42). Cek status kapan saja atau tunggu notifikasi WhatsApp."
+
+(Jika user tanya status nanti)
+3. check_opencode_status: {"session_id": "ses_xxx"}
+4. Response berdasarkan hasil check
+```
+
+### Anti-Pattern: JANGAN LAKUKAN INI
+
+```
+❌ JANGAN claim "task masih running" tanpa check_opencode_status dulu
+❌ JANGAN bilang "sepertinya masih jalan" tanpa evidence
+❌ JANGAN asumsi status task tanpa verify
+```
+
+**WAJIB selalu call `check_opencode_status` sebelum claim status apa pun.**
+

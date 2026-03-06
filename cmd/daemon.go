@@ -23,12 +23,11 @@ import (
 	"github.com/startower-observability/blackcat/internal/channel/telegram"
 	"github.com/startower-observability/blackcat/internal/channel/whatsapp"
 	"github.com/startower-observability/blackcat/internal/config"
-	"github.com/startower-observability/blackcat/internal/dashboard"
 	daemonruntime "github.com/startower-observability/blackcat/internal/daemon"
-	"github.com/startower-observability/blackcat/internal/hooks"
-	"github.com/startower-observability/blackcat/internal/ratelimit"
-	"github.com/startower-observability/blackcat/internal/rules"
+	"github.com/startower-observability/blackcat/internal/dashboard"
+	"github.com/startower-observability/blackcat/internal/eventlog"
 	guardrailsPkg "github.com/startower-observability/blackcat/internal/guardrails"
+	"github.com/startower-observability/blackcat/internal/hooks"
 	"github.com/startower-observability/blackcat/internal/llm"
 	"github.com/startower-observability/blackcat/internal/llm/antigravity"
 	"github.com/startower-observability/blackcat/internal/llm/copilot"
@@ -37,15 +36,18 @@ import (
 	"github.com/startower-observability/blackcat/internal/mcp"
 	"github.com/startower-observability/blackcat/internal/memory"
 	"github.com/startower-observability/blackcat/internal/oauth"
+	"github.com/startower-observability/blackcat/internal/observability"
 	"github.com/startower-observability/blackcat/internal/opencode"
+	"github.com/startower-observability/blackcat/internal/ratelimit"
+	"github.com/startower-observability/blackcat/internal/rules"
 	"github.com/startower-observability/blackcat/internal/scheduler"
 	"github.com/startower-observability/blackcat/internal/security"
 	"github.com/startower-observability/blackcat/internal/session"
 	"github.com/startower-observability/blackcat/internal/skills"
+	"github.com/startower-observability/blackcat/internal/taskqueue"
 	"github.com/startower-observability/blackcat/internal/tools"
 	"github.com/startower-observability/blackcat/internal/types"
 	"github.com/startower-observability/blackcat/internal/workspace"
-	"github.com/startower-observability/blackcat/internal/observability"
 )
 
 var daemonWorkers int
@@ -176,6 +178,32 @@ func runDaemon(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// Create task queue and event logger for background task processing
+	var tq *taskqueue.TaskQueue
+	{
+		homeDir, _ := os.UserHomeDir()
+		tqDBPath := filepath.Join(homeDir, ".blackcat", "tasks.db")
+		evLogPath := filepath.Join(homeDir, ".blackcat", "events.log")
+
+		var eventLogger *eventlog.EventLogger
+		if el, elErr := eventlog.New(evLogPath); elErr != nil {
+			slog.Warn("event logger unavailable", "err", elErr)
+		} else {
+			eventLogger = el
+			defer eventLogger.Close()
+		}
+
+		if q, tqErr := taskqueue.New(tqDBPath); tqErr != nil {
+			slog.Warn("task queue unavailable", "err", tqErr)
+		} else {
+			tq = q
+			if eventLogger != nil {
+				tq.SetEventLogger(eventLogger)
+			}
+			defer tq.Shutdown()
+		}
+	}
+
 	// Create session store
 	sessionStoreDir := cfg.Session.StoreDir
 	if sessionStoreDir == "" {
@@ -259,6 +287,10 @@ func runDaemon(cmd *cobra.Command, args []string) error {
 	}
 	openCodeClient := opencode.NewClient(cfg.OpenCode.Addr, openCodeOpts...)
 	registry.Register(tools.NewOpenCodeTool(openCodeClient, cfg.Security.AutoPermit, cfg.OpenCode.Timeout.Duration))
+	registry.Register(tools.NewOpenCodeStatusTool(openCodeClient))
+	if tq != nil {
+		registry.Register(tools.NewOpenCodeTaskAsyncTool(openCodeClient, tq, cfg.Security.AutoPermit, cfg.OpenCode.Timeout.Duration))
+	}
 	if sqliteMemStore != nil {
 		registry.Register(tools.NewMemoryTool(sqliteMemStore))
 	}
@@ -470,6 +502,17 @@ func runDaemon(cmd *cobra.Command, args []string) error {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"ok":true}`))
 	})
+
+	// Wire notification sender and start task queue before bus.Start
+	if tq != nil {
+		tq.SetNotificationSender(busNotificationAdapter{bus: bus})
+		tq.Start(ctx)
+
+		// Recover tasks that were pending/running when the daemon last stopped.
+		if recovered := tq.RecoverInterruptedTasks(ctx); len(recovered) > 0 {
+			slog.Info("recovered interrupted tasks", "count", len(recovered))
+		}
+	}
 
 	if err := bus.Start(ctx); err != nil {
 		return fmt.Errorf("start message bus: %w", err)
@@ -1126,6 +1169,22 @@ func (b *busChannelHealth) ChannelHealthList() []daemonruntime.ChannelHealthStat
 		}
 	}
 	return out
+}
+
+// busNotificationAdapter adapts *channel.MessageBus to taskqueue.NotificationSender.
+type busNotificationAdapter struct {
+	bus *channel.MessageBus
+}
+
+func (a busNotificationAdapter) Send(ctx context.Context, recipientID, message string) error {
+	msg := types.Message{
+		ID:          fmt.Sprintf("notif-%d", time.Now().UnixNano()),
+		ChannelType: types.ChannelWhatsApp,
+		ChannelID:   recipientID,
+		Content:     message,
+		Timestamp:   time.Now(),
+	}
+	return a.bus.Send(ctx, types.ChannelWhatsApp, msg)
 }
 
 // busReconnector adapts *channel.MessageBus to scheduler.ChannelReconnector.
