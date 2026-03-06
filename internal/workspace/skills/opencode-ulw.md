@@ -5,47 +5,47 @@ tags: [opencode, ultrawork, ulw, workflow]
 
 # OpenCode ULW Workflow
 
-Gunakan workflow Ultra-Work Loop (ULW) untuk menangani tugas coding yang kompleks secara otonom tanpa perlu interaksi per langkah. Cocok untuk investigasi, perbaikan bug, atau implementasi fitur sedang yang membutuhkan iterasi mandiri.
+Ultra-Work Loop (ULW) untuk task coding kompleks yang butuh iterasi mandiri. OpenCode akan loop terus sampai semua sub-task selesai.
 
 ## Kapan Menggunakan ULW
-- Tugas coding multi-file yang membutuhkan siklus "pikir-buat-tes".
-- Implementasi fitur baru atau refactoring yang sudah memiliki gambaran teknis.
-- Perbaikan bug yang membutuhkan eksplorasi codebase dan verifikasi tes.
+- Task multi-file yang butuh siklus buat-test-fix
+- Implementasi fitur atau refactoring besar
+- Bug fix yang butuh eksplorasi codebase mendalam
 
-## Struktur Panggilan opencode_task
-Panggil tool `opencode_task` dengan menyertakan command `/ulw-loop` di awal prompt.
+## Cara Menjalankan
 
-```json
-{
-  "prompt": "/ulw-loop\n\n[Deskripsi tugas detail di sini]",
-  "dir": "D:/Projects/StarTower/interstellar",
-  "session_id": "optional-id-jika-melanjutkan"
-}
+### Langsung via exec (DIREKOMENDASIKAN)
+```
+exec: opencode run --dir <PATH_PROJECT> --command "/ulw-loop" "<deskripsi task detail>"
 ```
 
-## Contoh Template Prompt
-### 1. Eksekusi Langsung (Tugas Baru)
-```text
-/ulw-loop
-
-Implementasikan middleware autentikasi JWT di folder internal/auth. 
-Pastikan ada unit test dan integrasikan ke router utama di main.go.
+Contoh:
+```
+exec: opencode run --dir /home/gillv/projects/blackcat --command "/ulw-loop" "implementasi middleware autentikasi JWT di internal/auth, buat unit test, integrasikan ke router di main.go"
 ```
 
-### 2. Rencana Lalu Eksekusi (Direkomendasikan untuk Tugas Kompleks)
-**Langkah 1: Minta Perencanaan (Prometheus)**
-`opencode_task(prompt="Analisis struktur database saat ini dan buat rencana migrasi ke PostgreSQL.", dir="...")`
+### Plan dulu lalu ULW (untuk task sangat kompleks)
+Langkah 1 - Planning:
+```
+exec: opencode run --dir /home/gillv/projects/myapp --agent prometheus "analisis dan buat rencana migrasi database ke PostgreSQL"
+```
+Langkah 2 - Execute ULW (lanjutkan session):
+```
+exec: opencode run --dir /home/gillv/projects/myapp -c --command "/ulw-loop"
+```
 
-**Langkah 2: Jalankan ULW dengan Session ID dari Langkah 1**
-`opencode_task(prompt="/ulw-loop", dir="...", session_id="SESSION_DARI_LANGKAH_1")`
+### Fallback via opencode_task (jika task >10 menit)
+```
+opencode_task: {"prompt": "/ulw-loop\n\nDeskripsi task", "dir": "/path/project"}
+```
 
-## Langkah Kerja (Step-by-Step)
-1. **Analisis**: Jika tugas sangat besar, biarkan Prometheus membuat rencana terlebih dahulu dalam sesi biasa.
-2. **Inisiasi**: Panggil `/ulw-loop` bersama deskripsi tugas atau dalam sesi yang sudah memiliki rencana.
-3. **Otonomi**: OpenCode akan berjalan terus menerus (loop) sampai semua sub-task selesai.
-4. **Verifikasi**: Periksa hasil akhir (build/test) sebelum melaporkan selesai ke user.
+## PENTING
+- SELALU tentukan --dir dengan path project yang benar
+- Simpan path project ke core_memory setelah menemukannya
+- Gunakan -c untuk melanjutkan session sebelumnya
+- Gunakan -s SESSION_ID untuk resume session tertentu
 
 ## Kesalahan Umum
-- ❌ Mengirim deskripsi tanpa `/ulw-loop` di baris pertama: OpenCode hanya akan merespon teks biasa tanpa menjalankan loop otonom.
-- ❌ Tidak menyertakan `session_id` saat ingin melanjutkan pekerjaan: OpenCode akan memulai sesi baru dan kehilangan konteks file yang sudah dibaca/diubah.
-- ❌ Mengabaikan direktori (`dir`): OpenCode mungkin bekerja di folder yang salah atau gagal menemukan repo git.
+- Tidak menyertakan --dir: OpenCode bekerja di folder yang salah
+- Tidak pakai --command "/ulw-loop": OpenCode hanya merespon biasa tanpa loop otonom
+- Lupa simpan path ke memory: Sesi berikutnya lupa lokasi project

@@ -17,6 +17,8 @@ var (
 	strikeRe         = regexp.MustCompile(`~~(.+?)~~`)
 	headingRe        = regexp.MustCompile(`(?m)^#{1,6}\s+(.+)$`)
 	horizontalRuleRe = regexp.MustCompile(`(?m)^\s*---+\s*$\r?\n?`)
+	bulletListRe     = regexp.MustCompile(`(?m)^(\s*)[-*+]\s+`)
+	numberedListRe   = regexp.MustCompile(`(?m)^(\s*)\d+\.\s+`)
 )
 
 // FormatForWhatsApp converts standard Markdown to WhatsApp-compatible formatting.
@@ -78,6 +80,8 @@ func FormatForWhatsApp(text string) string {
 	text = strikeRe.ReplaceAllString(text, `~$1~`)
 	text = headingRe.ReplaceAllString(text, `*$1*`)
 	text = horizontalRuleRe.ReplaceAllString(text, "")
+	text = bulletListRe.ReplaceAllString(text, "${1}• ")
+	text = numberedListRe.ReplaceAllString(text, "${1}")
 
 	for i, value := range boldPlaceholders {
 		placeholder := fmt.Sprintf("@@WA_BOLD_%d@@", i)
