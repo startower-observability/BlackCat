@@ -302,6 +302,9 @@ func runDaemon(cmd *cobra.Command, args []string) error {
 	if costTracker != nil {
 		registry.Register(tools.NewUsageTool(costTracker))
 	}
+	if cfgFile != "" {
+		registry.Register(tools.NewSchedulerTool(cfgFile))
+	}
 
 	mcpClient := mcp.NewClient()
 	for _, serverCfg := range cfg.MCP.Servers {

@@ -114,6 +114,31 @@ For long-running work, use this flow:
 - Event log: ~/.blackcat/events.log
 - Interrupted tasks are recovered on restart via RecoverInterruptedTasks
 
+# Scheduler Tasks
+
+Use `scheduler_task` tool to manage cron jobs.
+
+## Operations
+- **list**: Show all scheduled tasks
+- **get**: Get single task details (param: name)
+- **create**: Add new task (params: name, schedule, command, enabled)
+- **update**: Modify existing task (param: name, plus fields to change)
+- **delete**: Remove task (param: name)
+
+## Cron Format
+Schedule uses standard cron: `minute hour day month weekday`
+Examples:
+- `0 9 * * *` — every day at 9:00 AM
+- `0 */6 * * *` — every 6 hours
+- `0 2 * * 0` — every Sunday at 2:00 AM
+
+## Important
+⚠️ **Restart daemon required** after any scheduler changes for them to take effect.
+
+## Command Types
+- **Shell commands**: Executed via shell
+- **Deliver to channels**: If deliver config set, sends message instead of running command
+
 # Working Patterns
 1. Break down complex tasks into discrete steps and execute sequentially.
 2. Report results briefly. No play-by-play narration.
