@@ -1,40 +1,43 @@
-# BlackCat
+> [!TIP]
+> For AI agents setting up this project, skip this README and read [`llms.txt`](./llms.txt) instead.
 
-A Go-based AI agent that orchestrates [OpenCode CLI](https://opencode.ai) via messaging channels. Deploy BlackCat alongside OpenCode on a server, then interact with your development environment through Telegram, Discord, or WhatsApp.
+# BlackCat 🐈‍⬛
 
-BlackCat receives your natural language requests, processes them through an LLM-powered agent loop, delegates coding tasks to OpenCode, and responds back in your messaging channel — giving you full server control from anywhere.
+**A black cat sorcerer that bridges your messaging channels to a full AI coding environment.**
 
-## Features
+BlackCat is a Go daemon that sits between your chat apps (Telegram, Discord, WhatsApp) and [OpenCode CLI](https://opencode.ai). Send a message, and your digital familiar conjures code changes, runs commands, and reports back — all from your phone.
 
-- **Multi-channel messaging** — Telegram, Discord, and WhatsApp adapters
-- **8 LLM providers** — OpenAI, Anthropic, GitHub Copilot, Antigravity, Google Gemini, Zen, OpenRouter, Ollama
-- **OAuth authentication** — Device code flow (Copilot) and PKCE flow (Antigravity)
-- **Zen Coding Plan** — Curated hosted models via OpenCode API
-- **Interactive setup** — `blackcat configure` wizard for provider setup
-- **OpenCode delegation** — Full access to OpenCode CLI for coding tasks
-- **MCP support** — Model Context Protocol server/client integration
-- **Encrypted vault** — AES-256-GCM encrypted storage for API keys and tokens
-- **Memory consolidation** — Persistent agent memory via MEMORY.md
-- **Pixel Cat Dashboard** — React SPA with RPG-style room scene, animated black cat reacting to system state, real-time HUD overlay at `localhost:8081/dashboard/`
-- **Security** — Command deny-list, shell sandboxing, auto-permit controls
-- **Docker support** — Docker Compose deployment
+Once summoned, the sorcery is autonomous: BlackCat handles LLM orchestration, tool delegation, encrypted secret storage, scheduled tasks, and a pixel-art dashboard where a cat reacts to your system state in real-time.
+
+## Highlights
+
+| | Feature | Description |
+|---|---------|-------------|
+| 💬 | **Multi-Channel** | Telegram, Discord, and WhatsApp adapters — chat from anywhere |
+| 🧠 | **8 LLM Providers** | OpenAI, Anthropic, Gemini, Copilot, Antigravity, Zen, OpenRouter, Ollama |
+| 🔐 | **OAuth + Vault** | Device code flow, PKCE, AES-256-GCM encrypted key storage |
+| 🐱 | **Pixel Cat Dashboard** | RPG-style room scene with animated black cat at `localhost:8081/dashboard/` |
+| ⏰ | **Scheduler** | 6-field cron jobs that deliver messages to channels on schedule |
+| 🧰 | **OpenCode Delegation** | Full access to OpenCode CLI for coding, debugging, refactoring |
+| 🔌 | **MCP Support** | Model Context Protocol server/client integration |
+| 🧹 | **Memory** | Persistent agent memory via MEMORY.md with auto-consolidation |
 
 ## Supported Providers
 
-| Provider | Auth Method | Wire Format | Status |
-|----------|------------|-------------|--------|
+| Provider | Auth | Wire Format | Status |
+|----------|------|-------------|--------|
 | OpenAI | API Key | OpenAI | Stable |
 | Anthropic | API Key | OpenAI-compat | Stable |
 | Google Gemini | API Key | Gemini | Stable |
-| GitHub Copilot | OAuth Device Flow | OpenAI-compat | New |
+| GitHub Copilot | OAuth Device Flow | OpenAI-compat | Stable |
 | Antigravity | OAuth PKCE | Gemini | New (ToS Risk) |
 | OpenRouter | API Key | OpenAI | Stable |
 | Ollama | None (local) | OpenAI | Stable |
-| Zen Coding Plan | API Key | OpenAI | New |
+| Zen Coding Plan | API Key | OpenAI | Stable |
 
-## Quick Start
+## Installation
 
-### Install
+### For Humans
 
 ```bash
 go install github.com/startower-observability/blackcat@latest
@@ -46,9 +49,9 @@ go install github.com/startower-observability/blackcat@latest
 blackcat onboard
 ```
 
-The wizard guides you through:
-1. Choosing an LLM provider
-2. Configuring a messaging channel
+The `onboard` wizard walks you through:
+1. Picking an LLM provider and entering credentials
+2. Connecting a messaging channel
 3. Installing and starting the daemon
 
 ### Manage the daemon
@@ -61,7 +64,7 @@ blackcat stop       # stop the daemon
 
 ## Deployment
 
-Deploy BlackCat to a Linux VM with a single command:
+### For AI Agents
 
 ```bash
 cp deploy/deploy.env.example deploy/deploy.env
@@ -75,7 +78,7 @@ For AI agents setting up this project, see [llms.txt](./llms.txt).
 
 ## Configuration
 
-BlackCat is configured via YAML file (`~/.blackcat/config.yaml`) with environment variable overrides using the `BLACKCAT_` prefix.
+Config file: `~/.blackcat/config.yaml` (created by `blackcat onboard`)
 
 Key environment variables:
 
