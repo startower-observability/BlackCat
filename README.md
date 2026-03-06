@@ -41,11 +41,6 @@ Once summoned, the sorcery is autonomous: BlackCat handles LLM orchestration, to
 
 ```bash
 go install github.com/startower-observability/blackcat@latest
-```
-
-### Onboard
-
-```bash
 blackcat onboard
 ```
 
@@ -54,33 +49,32 @@ The `onboard` wizard walks you through:
 2. Connecting a messaging channel
 3. Installing and starting the daemon
 
-### Manage the daemon
-
-```bash
-blackcat status     # check status
-blackcat restart    # restart after config changes
-blackcat stop       # stop the daemon
-```
-
-## Deployment
+That's it. You're live.
 
 ### For AI Agents
 
+Point your LLM at [`llms.txt`](./llms.txt) — it contains the full deterministic setup contract.
+
+## Core Commands
+
 ```bash
-cp deploy/deploy.env.example deploy/deploy.env
-$EDITOR deploy/deploy.env   # fill in VM details
-make deploy
+blackcat onboard            # first-time setup wizard
+blackcat configure          # reconfigure provider/channel anytime
+blackcat start              # start the daemon
+blackcat stop               # stop the daemon
+blackcat restart            # restart after config changes
+blackcat status             # check daemon state
+blackcat health             # quick health check (JSON)
+blackcat doctor             # full system diagnostic
+blackcat channels list      # list configured channels
+blackcat channels login     # authenticate a channel session
 ```
-
-See [`deploy/README.md`](deploy/README.md) for full setup instructions including SSH key configuration and service file details.
-
-For AI agents setting up this project, see [llms.txt](./llms.txt).
 
 ## Configuration
 
 Config file: `~/.blackcat/config.yaml` (created by `blackcat onboard`)
 
-Key environment variables:
+Environment variable overrides use the `BLACKCAT_` prefix:
 
 ```bash
 BLACKCAT_LLM_PROVIDER=openai
@@ -92,22 +86,14 @@ BLACKCAT_ZEN_APIKEY=your-zen-key
 BLACKCAT_OPENCODE_PASSWORD=your-opencode-password
 ```
 
-See [`blackcat.example.yaml`](blackcat.example.yaml) for a complete example.
-
-## Docker
-
-```bash
-docker compose up -d
-```
-
-See `docker-compose.yml` for the full setup. Requires OpenCode CLI to be accessible on the same network.
+See [`blackcat.example.yaml`](blackcat.example.yaml) for the full reference.
 
 ## Requirements
 
-- Go 1.25+ (with `CGO_ENABLED=1` for WhatsApp support)
-- OpenCode CLI running on the same server
+- Go 1.25+ with `CGO_ENABLED=1` (required for WhatsApp SQLite support)
+- [OpenCode CLI](https://opencode.ai) running on the same machine
 - At least one messaging channel configured
-- At least one LLM provider configured
+- At least one LLM provider API key
 
 ## License
 
