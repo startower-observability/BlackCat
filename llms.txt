@@ -1,0 +1,127 @@
+# BlackCat — AI Setup Contract
+
+## What is BlackCat
+
+BlackCat is a Go-based AI agent that orchestrates OpenCode CLI via messaging channels (Telegram, Discord, WhatsApp). Deploy BlackCat alongside OpenCode on a server, then interact with your development environment through natural language messages.
+
+## Prerequisites
+
+- Go 1.25+ with CGO_ENABLED=1 (required for WhatsApp SQLite support)
+- OpenCode CLI installed and running (listens on http://127.0.0.1:4096)
+- At least one messaging channel credential:
+  - Telegram bot token, or
+  - Discord bot token, or
+  - WhatsApp credentials
+- At least one LLM provider API key
+
+## Installation
+
+```bash
+go install github.com/startower-observability/blackcat@latest
+blackcat onboard           # interactive config wizard — creates ~/.blackcat/config.yaml
+blackcat start             # starts daemon via systemctl --user
+blackcat status            # verify daemon is running
+```
+
+## Configuration
+
+Configuration path: `~/.blackcat/config.yaml`
+
+Key environment variables (all prefixed with `BLACKCAT_`):
+
+| Variable | Description |
+|----------|-------------|
+| `BLACKCAT_LLM_PROVIDER` | LLM provider: openai, anthropic, gemini, copilot, antigravity, openrouter, ollama, zen |
+| `BLACKCAT_LLM_APIKEY` | API key for the LLM provider |
+| `BLACKCAT_CHANNELS_TELEGRAM_TOKEN` | Telegram bot token |
+| `BLACKCAT_CHANNELS_DISCORD_TOKEN` | Discord bot token |
+| `BLACKCAT_CHANNELS_WHATSAPP_TOKEN` | WhatsApp token |
+| `BLACKCAT_VAULT_PASSPHRASE` | Vault encryption passphrase |
+| `BLACKCAT_ZEN_APIKEY` | Zen/OpenCode.ai API key |
+| `BLACKCAT_OPENCODE_PASSWORD` | OpenCode daemon password |
+
+## Service Bootstrap
+
+Commands to manage the BlackCat daemon:
+
+```bash
+blackcat start             # start daemon
+blackcat stop              # stop daemon
+blackcat restart           # restart after config changes
+blackcat status            # show running state
+blackcat doctor            # full system diagnostic
+blackcat health            # quick health check (JSON)
+```
+
+Systemd commands (use `--user`, NOT sudo):
+
+```bash
+systemctl --user status blackcat
+systemctl --user start blackcat
+systemctl --user stop blackcat
+systemctl --user restart blackcat
+```
+
+## Channel Setup
+
+```bash
+blackcat channels add      # interactive channel wizard
+blackcat channels list     # list configured channels
+blackcat channels login    # authenticate channel session (e.g. WhatsApp QR scan)
+blackcat channels status   # verify channel connection
+```
+
+## Health Verification
+
+After setup, verify the system is healthy:
+
+```bash
+blackcat health            # expect JSON: {"status":"healthy","scheduler":"...","whatsapp":"connected",...}
+blackcat doctor            # full diagnostic with detailed status per subsystem
+```
+
+## Scheduler Configuration
+
+Configured in `~/.blackcat/config.yaml` under the `scheduler:` section.
+
+Cron format: 6-field (seconds-first): `S M H D Month Weekday`
+
+Example configuration:
+
+```yaml
+scheduler:
+  enabled: true
+  jobs:
+    - name: morning-greeting
+      schedule: "0 0 6 * * *"   # 06:00 daily
+      deliver:
+        channel: whatsapp
+        channelId: "6281234567890@s.whatsapp.net"
+        message: "Good morning!"
+```
+
+Check scheduler status via:
+- `blackcat health` — shows scheduler status and task count
+- `blackcat doctor` — detailed scheduler diagnostics
+
+There is NO `blackcat scheduler` CLI subcommand. Configuration is YAML-only.
+
+## Failure Diagnostics
+
+| Symptom | Diagnosis |
+|---------|-----------|
+| Daemon won't start | Run `blackcat doctor`, verify OpenCode is running at 127.0.0.1:4096 |
+| WhatsApp disconnected | Run `blackcat channels login` for QR scan re-auth |
+| LLM errors | Verify API key via env var, check `blackcat doctor` |
+| CGO errors on build | Ensure CGO_ENABLED=1 and C compiler installed (gcc/clang) |
+| Permission denied | Ensure using `systemctl --user` not `sudo systemctl` |
+
+## Do / Don't
+
+- DO use `systemctl --user` — NEVER `sudo systemctl`
+- DO use `go test -tags nospa ./...` — NOT `go test ./...`
+- DO keep `deploy/deploy.env` out of git — MUST NEVER be committed
+- DO run `blackcat health` after every config change
+- DON'T look for `blackcat scheduler` CLI — it doesn't exist; use health/doctor
+- DON'T commit secrets or API keys to the repo
+- DON'T use emojis in commit messages or documentation

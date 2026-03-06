@@ -35,10 +35,6 @@ Thumbs.db
 # Research docs
 Research_Design_Architecture_InterStellar.md
 
-# VitePress docs site
-website/node_modules/
-website/.vitepress/cache/
-website/.vitepress/dist/
 
 # Sisyphus agent workspace
 .sisyphus/

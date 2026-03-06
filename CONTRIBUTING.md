@@ -48,4 +48,3 @@ Note: Integration tests depend on Redis. Run full suite only if Redis is availab
 - Follow idiomatic Go conventions
 - Keep functions focused and well-documented
 
-For detailed documentation, see the [VitePress docs](./website/).

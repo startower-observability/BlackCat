@@ -1,156 +1,99 @@
-# BlackCat
+> [!TIP]
+> For AI agents setting up this project, skip this README and read [`llms.txt`](./llms.txt) instead.
 
-A Go-based AI agent that orchestrates [OpenCode CLI](https://opencode.ai) via messaging channels. Deploy BlackCat alongside OpenCode on a server, then interact with your development environment through Telegram, Discord, or WhatsApp.
+# BlackCat 🐈‍⬛
 
-BlackCat receives your natural language requests, processes them through an LLM-powered agent loop, delegates coding tasks to OpenCode, and responds back in your messaging channel — giving you full server control from anywhere.
+**A black cat sorcerer that bridges your messaging channels to a full AI coding environment.**
 
-## Features
+BlackCat is a Go daemon that sits between your chat apps (Telegram, Discord, WhatsApp) and [OpenCode CLI](https://opencode.ai). Send a message, and your digital familiar conjures code changes, runs commands, and reports back — all from your phone.
 
-- **Multi-channel messaging** — Telegram, Discord, and WhatsApp adapters
-- **8 LLM providers** — OpenAI, Anthropic, GitHub Copilot, Antigravity, Google Gemini, Zen, OpenRouter, Ollama
-- **OAuth authentication** — Device code flow (Copilot) and PKCE flow (Antigravity)
-- **Zen Coding Plan** — Curated hosted models via OpenCode API
-- **Interactive setup** — `blackcat configure` wizard for provider setup
-- **OpenCode delegation** — Full access to OpenCode CLI for coding tasks
-- **MCP support** — Model Context Protocol server/client integration
-- **Encrypted vault** — AES-256-GCM encrypted storage for API keys and tokens
-- **Memory consolidation** — Persistent agent memory via MEMORY.md
-- **Pixel Cat Dashboard** — React SPA with RPG-style room scene, animated black cat reacting to system state, real-time HUD overlay at `localhost:8081/dashboard/`
-- **Security** — Command deny-list, shell sandboxing, auto-permit controls
-- **Docker support** — Docker Compose deployment
+Once summoned, the sorcery is autonomous: BlackCat handles LLM orchestration, tool delegation, encrypted secret storage, scheduled tasks, and a pixel-art dashboard where a cat reacts to your system state in real-time.
+
+## Highlights
+
+| | Feature | Description |
+|---|---------|-------------|
+| 💬 | **Multi-Channel** | Telegram, Discord, and WhatsApp adapters — chat from anywhere |
+| 🧠 | **8 LLM Providers** | OpenAI, Anthropic, Gemini, Copilot, Antigravity, Zen, OpenRouter, Ollama |
+| 🔐 | **OAuth + Vault** | Device code flow, PKCE, AES-256-GCM encrypted key storage |
+| 🐱 | **Pixel Cat Dashboard** | RPG-style room scene with animated black cat at `localhost:8081/dashboard/` |
+| ⏰ | **Scheduler** | 6-field cron jobs that deliver messages to channels on schedule |
+| 🧰 | **OpenCode Delegation** | Full access to OpenCode CLI for coding, debugging, refactoring |
+| 🔌 | **MCP Support** | Model Context Protocol server/client integration |
+| 🧹 | **Memory** | Persistent agent memory via MEMORY.md with auto-consolidation |
 
 ## Supported Providers
 
-| Provider | Auth Method | Wire Format | Status |
-|----------|------------|-------------|--------|
+| Provider | Auth | Wire Format | Status |
+|----------|------|-------------|--------|
 | OpenAI | API Key | OpenAI | Stable |
 | Anthropic | API Key | OpenAI-compat | Stable |
 | Google Gemini | API Key | Gemini | Stable |
-| GitHub Copilot | OAuth Device Flow | OpenAI-compat | New |
+| GitHub Copilot | OAuth Device Flow | OpenAI-compat | Stable |
 | Antigravity | OAuth PKCE | Gemini | New (ToS Risk) |
 | OpenRouter | API Key | OpenAI | Stable |
 | Ollama | None (local) | OpenAI | Stable |
-| Zen Coding Plan | API Key | OpenAI | New |
+| Zen Coding Plan | API Key | OpenAI | Stable |
 
-## Quick Start
+## Installation
 
-### Install
+### For Humans
 
-**Linux/macOS** (one-line):
-```bash
-curl -fsSL https://raw.githubusercontent.com/startower-observability/BlackCat/main/scripts/install.sh | sh
-```
-
-**Windows** (PowerShell):
-```powershell
-irm https://raw.githubusercontent.com/startower-observability/BlackCat/main/scripts/install.ps1 | iex
-```
-
-**Or with Go:**
 ```bash
 go install github.com/startower-observability/blackcat@latest
-```
-
-### Onboard
-```bash
 blackcat onboard
 ```
 
-The wizard guides you through:
-1. Choosing an LLM provider
-2. Configuring a messaging channel
+The `onboard` wizard walks you through:
+1. Picking an LLM provider and entering credentials
+2. Connecting a messaging channel
 3. Installing and starting the daemon
 
-### Manage the daemon
-```bash
-blackcat status     # check status
-blackcat restart    # restart after config changes
-blackcat stop       # stop the daemon
-```
+That's it. You're live.
 
-## Deployment
+### For AI Agents
 
-Deploy BlackCat to a Linux VM with a single command:
+Point your LLM at [`llms.txt`](./llms.txt) — it contains the full deterministic setup contract.
 
-### Prerequisites
-
-1. Copy the deploy environment template and fill in your VM details:
-   ```bash
-   cp deploy/deploy.env.example deploy/deploy.env
-   $EDITOR deploy/deploy.env
-   ```
-
-2. Ensure your SSH key has access to the VM.
-
-### Deploy
+## Core Commands
 
 ```bash
-make deploy
+blackcat onboard            # first-time setup wizard
+blackcat configure          # reconfigure provider/channel anytime
+blackcat start              # start the daemon
+blackcat stop               # stop the daemon
+blackcat restart            # restart after config changes
+blackcat status             # check daemon state
+blackcat health             # quick health check (JSON)
+blackcat doctor             # full system diagnostic
+blackcat channels list      # list configured channels
+blackcat channels login     # authenticate a channel session
 ```
-
-This single command:
-- Pushes your local git changes to the remote
-- SSHes into the VM, pulls the latest code, and builds the binary
-- Installs the binary to `~/.blackcat/bin/blackcat`
-- Deploys and reloads the `blackcat` and `opencode` systemd services
-- Runs a health check to confirm the service is up
-
-### Quick Redeploy (skip git push)
-
-```bash
-make deploy-no-push
-```
-
-### Health Check Only
-
-```bash
-make verify
-```
-
-See [`deploy/README.md`](deploy/README.md) for full setup instructions including SSH key configuration and service file details.
-
-## Documentation
-
-| Guide | Description |
-|-------|-------------|
-| [Getting Started](https://startower-observability.github.io/BlackCat/getting-started) | Prerequisites, installation, quick start |
-| [Configuration](https://startower-observability.github.io/BlackCat/configuration) | Full YAML reference, environment variables, examples |
-| [LLM Providers](https://startower-observability.github.io/BlackCat/providers) | All 8 providers: setup, models, configuration |
-| [CLI Reference](https://startower-observability.github.io/BlackCat/cli/onboard) | Reference for all BlackCat commands |
-| [Architecture](https://startower-observability.github.io/BlackCat/concepts/architecture) | How BlackCat works internally |
 
 ## Configuration
 
-BlackCat is configured via YAML file (`~/.blackcat/config.yaml`) with environment variable overrides using the `BLACKCAT_` prefix.
+Config file: `~/.blackcat/config.yaml` (created by `blackcat onboard`)
 
-See [`blackcat.example.yaml`](blackcat.example.yaml) for a complete example with all fields documented.
-
-Key environment variables:
+Environment variable overrides use the `BLACKCAT_` prefix:
 
 ```bash
 BLACKCAT_LLM_PROVIDER=openai
 BLACKCAT_LLM_APIKEY=sk-your-key
 BLACKCAT_CHANNELS_TELEGRAM_TOKEN=your-bot-token
+BLACKCAT_CHANNELS_DISCORD_TOKEN=your-discord-token
 BLACKCAT_VAULT_PASSPHRASE=your-passphrase
 BLACKCAT_ZEN_APIKEY=your-zen-key
+BLACKCAT_OPENCODE_PASSWORD=your-opencode-password
 ```
 
-## Docker
-
-```bash
-docker compose up -d
-```
-
-See `docker-compose.yml` for the full setup. Requires OpenCode CLI to be accessible on the same network.
+See [`blackcat.example.yaml`](blackcat.example.yaml) for the full reference.
 
 ## Requirements
 
-- Go 1.25+
-- OpenCode CLI running on the same server
+- Go 1.25+ with `CGO_ENABLED=1` (required for WhatsApp SQLite support)
+- [OpenCode CLI](https://opencode.ai) running on the same machine
 - At least one messaging channel configured
-- At least one LLM provider configured
-
-> **Note:** WhatsApp support requires CGO for SQLite. Build with `CGO_ENABLED=1`.
+- At least one LLM provider API key
 
 ## License
 
