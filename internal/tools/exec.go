@@ -88,6 +88,11 @@ func (t *ExecTool) Execute(ctx context.Context, args json.RawMessage) (string, e
 		return "", err
 	}
 
+	// Guard: opencode run without --dir produces wrong results.
+	if strings.Contains(params.Command, "opencode run") && !strings.Contains(params.Command, "--dir") {
+		return "", fmt.Errorf("exec: 'opencode run' requires --dir flag. Find the project directory first (e.g. find ~ -maxdepth 3 -name '.git' -type d) then add --dir /path/to/project")
+	}
+
 	// Determine timeout: use param if provided, otherwise use default.
 	timeout := t.timeout
 	if params.Timeout > 0 {
