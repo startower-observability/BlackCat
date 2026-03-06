@@ -18,13 +18,14 @@ func newTestArchivalStore(t *testing.T) *SQLiteStore {
 	}
 	t.Cleanup(func() { db.Close() })
 
-	if err := createSchema(db); err != nil {
+	hasFTS5 := detectFTS5(db)
+	if err := createSchema(db, hasFTS5); err != nil {
 		t.Fatalf("createSchema: %v", err)
 	}
-	if err := createArchivalSchema(db); err != nil {
+	if err := createArchivalSchema(db, hasFTS5); err != nil {
 		t.Fatalf("createArchivalSchema: %v", err)
 	}
-	return &SQLiteStore{db: db}
+	return &SQLiteStore{db: db, hasFTS5: hasFTS5}
 }
 
 func TestInsertArchival_Basic(t *testing.T) {

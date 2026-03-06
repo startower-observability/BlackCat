@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/binary"
 	"fmt"
+	"log/slog"
 	"math"
 	"os"
 	"path/filepath"
@@ -17,9 +18,12 @@ import (
 )
 
 // SQLiteStore implements Store with SQLite and FTS5 full-text search.
+// When FTS5 is not available (e.g. default Ubuntu SQLite), it degrades
+// gracefully to LIKE-based search.
 type SQLiteStore struct {
-	db *sql.DB
-	mu sync.RWMutex
+	db      *sql.DB
+	mu      sync.RWMutex
+	hasFTS5 bool
 }
 
 // NewSQLiteStore creates a new SQLite-backed memory store at the given path.
@@ -33,20 +37,35 @@ func NewSQLiteStore(dbPath string) (*SQLiteStore, error) {
 		return nil, fmt.Errorf("memory: open sqlite: %w", err)
 	}
 
-	if err := createSchema(db); err != nil {
+	hasFTS5 := detectFTS5(db)
+	if !hasFTS5 {
+		slog.Warn("FTS5 not available, using fallback search")
+	}
+
+	if err := createSchema(db, hasFTS5); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("memory: create schema: %w", err)
 	}
 
-	if err := createArchivalSchema(db); err != nil {
+	if err := createArchivalSchema(db, hasFTS5); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("memory: create archival schema: %w", err)
 	}
 
-	return &SQLiteStore{db: db}, nil
+	return &SQLiteStore{db: db, hasFTS5: hasFTS5}, nil
 }
 
-func createSchema(db *sql.DB) error {
+// detectFTS5 checks whether the SQLite build supports the FTS5 module.
+func detectFTS5(db *sql.DB) bool {
+	_, err := db.Exec("CREATE VIRTUAL TABLE IF NOT EXISTS _fts5_test USING fts5(x)")
+	if err != nil {
+		return false
+	}
+	_, _ = db.Exec("DROP TABLE IF EXISTS _fts5_test")
+	return true
+}
+
+func createSchema(db *sql.DB, hasFTS5 bool) error {
 	schema := `
 	CREATE TABLE IF NOT EXISTS memories (
 		id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -55,29 +74,39 @@ func createSchema(db *sql.DB) error {
 		source     TEXT    DEFAULT '',
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
-
-	CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
-		content, tags,
-		content='memories',
-		content_rowid='id'
-	);
-
-	CREATE TRIGGER IF NOT EXISTS memories_ai AFTER INSERT ON memories BEGIN
-		INSERT INTO memories_fts(rowid, content, tags)
-		VALUES (new.id, new.content, new.tags);
-	END;
-
-	CREATE TRIGGER IF NOT EXISTS memories_ad AFTER DELETE ON memories BEGIN
-		INSERT INTO memories_fts(memories_fts, rowid, content, tags)
-		VALUES ('delete', old.id, old.content, old.tags);
-	END;
 	CREATE TABLE IF NOT EXISTS metadata (
 		key   TEXT PRIMARY KEY,
 		value TEXT NOT NULL
 	);
 	`
-	_, err := db.Exec(schema)
-	return err
+	if _, err := db.Exec(schema); err != nil {
+		return err
+	}
+
+	if hasFTS5 {
+		ftsSchema := `
+		CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
+			content, tags,
+			content='memories',
+			content_rowid='id'
+		);
+
+		CREATE TRIGGER IF NOT EXISTS memories_ai AFTER INSERT ON memories BEGIN
+			INSERT INTO memories_fts(rowid, content, tags)
+			VALUES (new.id, new.content, new.tags);
+		END;
+
+		CREATE TRIGGER IF NOT EXISTS memories_ad AFTER DELETE ON memories BEGIN
+			INSERT INTO memories_fts(memories_fts, rowid, content, tags)
+			VALUES ('delete', old.id, old.content, old.tags);
+		END;
+		`
+		if _, err := db.Exec(ftsSchema); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // Read returns all entries (up to 100, in chronological order).
@@ -112,12 +141,17 @@ func (s *SQLiteStore) Search(ctx context.Context, query string) ([]Entry, error)
 }
 
 // SearchWithLimit performs FTS5 search with a configurable result limit.
+// Falls back to LIKE-based search if FTS5 is unavailable.
 func (s *SQLiteStore) SearchWithLimit(ctx context.Context, query string, limit int) ([]Entry, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	if limit <= 0 {
 		limit = 10
+	}
+
+	if !s.hasFTS5 {
+		return s.searchLike(ctx, query, limit)
 	}
 
 	rows, err := s.db.QueryContext(ctx,
@@ -290,7 +324,7 @@ func tagSource(tags []string) string {
 // Archival Memory
 // ---------------------------------------------------------------------------
 
-func createArchivalSchema(db *sql.DB) error {
+func createArchivalSchema(db *sql.DB, hasFTS5 bool) error {
 	schema := `
 	CREATE TABLE IF NOT EXISTS archival_memory (
 		id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -301,25 +335,35 @@ func createArchivalSchema(db *sql.DB) error {
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
-
-	CREATE VIRTUAL TABLE IF NOT EXISTS archival_memory_fts USING fts5(
-		content, tags,
-		content='archival_memory',
-		content_rowid='id'
-	);
-
-	CREATE TRIGGER IF NOT EXISTS archival_memory_ai AFTER INSERT ON archival_memory BEGIN
-		INSERT INTO archival_memory_fts(rowid, content, tags)
-		VALUES (new.id, new.content, new.tags);
-	END;
-
-	CREATE TRIGGER IF NOT EXISTS archival_memory_ad AFTER DELETE ON archival_memory BEGIN
-		INSERT INTO archival_memory_fts(archival_memory_fts, rowid, content, tags)
-		VALUES ('delete', old.id, old.content, old.tags);
-	END;
 	`
-	_, err := db.Exec(schema)
-	return err
+	if _, err := db.Exec(schema); err != nil {
+		return err
+	}
+
+	if hasFTS5 {
+		ftsSchema := `
+		CREATE VIRTUAL TABLE IF NOT EXISTS archival_memory_fts USING fts5(
+			content, tags,
+			content='archival_memory',
+			content_rowid='id'
+		);
+
+		CREATE TRIGGER IF NOT EXISTS archival_memory_ai AFTER INSERT ON archival_memory BEGIN
+			INSERT INTO archival_memory_fts(rowid, content, tags)
+			VALUES (new.id, new.content, new.tags);
+		END;
+
+		CREATE TRIGGER IF NOT EXISTS archival_memory_ad AFTER DELETE ON archival_memory BEGIN
+			INSERT INTO archival_memory_fts(archival_memory_fts, rowid, content, tags)
+			VALUES ('delete', old.id, old.content, old.tags);
+		END;
+		`
+		if _, err := db.Exec(ftsSchema); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // float32sToBytes serializes a float32 slice to little-endian bytes.
@@ -443,7 +487,12 @@ func (s *SQLiteStore) SearchArchival(ctx context.Context, userID, query string, 
 
 // archivalFTSSearch returns FTS5-ranked archival results for a user.
 // Returns (rowIDs, results, error) where rowIDs are ordered by FTS5 rank.
+// Falls back to LIKE-based search if FTS5 is unavailable.
 func (s *SQLiteStore) archivalFTSSearch(ctx context.Context, userID, query string) ([]int64, []ArchivalResult, error) {
+	if !s.hasFTS5 {
+		return s.archivalLikeSearch(ctx, userID, query)
+	}
+
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT m.id, m.content, m.tags, m.created_at
 		 FROM archival_memory m
@@ -453,8 +502,8 @@ func (s *SQLiteStore) archivalFTSSearch(ctx context.Context, userID, query strin
 		userID, ftsQuery(query),
 	)
 	if err != nil {
-		// Return empty on FTS parse error.
-		return nil, nil, nil
+		// Fallback to LIKE on FTS parse error.
+		return s.archivalLikeSearch(ctx, userID, query)
 	}
 	defer rows.Close()
 
@@ -466,6 +515,41 @@ func (s *SQLiteStore) archivalFTSSearch(ctx context.Context, userID, query strin
 		var createdAt time.Time
 		if err := rows.Scan(&id, &content, &tags, &createdAt); err != nil {
 			return nil, nil, fmt.Errorf("memory: archival fts scan: %w", err)
+		}
+		ids = append(ids, id)
+		results = append(results, ArchivalResult{
+			Content:   content,
+			Tags:      splitTags(tags),
+			CreatedAt: createdAt,
+		})
+	}
+	return ids, results, rows.Err()
+}
+
+// archivalLikeSearch performs LIKE-based search on archival memory as a
+// fallback when FTS5 is not available.
+func (s *SQLiteStore) archivalLikeSearch(ctx context.Context, userID, query string) ([]int64, []ArchivalResult, error) {
+	like := "%" + query + "%"
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, content, tags, created_at
+		 FROM archival_memory
+		 WHERE user_id = ? AND (content LIKE ? OR tags LIKE ?)
+		 ORDER BY created_at DESC`,
+		userID, like, like,
+	)
+	if err != nil {
+		return nil, nil, fmt.Errorf("memory: archival like search: %w", err)
+	}
+	defer rows.Close()
+
+	var ids []int64
+	var results []ArchivalResult
+	for rows.Next() {
+		var id int64
+		var content, tags string
+		var createdAt time.Time
+		if err := rows.Scan(&id, &content, &tags, &createdAt); err != nil {
+			return nil, nil, fmt.Errorf("memory: archival like scan: %w", err)
 		}
 		ids = append(ids, id)
 		results = append(results, ArchivalResult{
@@ -492,8 +576,8 @@ func (s *SQLiteStore) archivalVectorSearch(ctx context.Context, userID string, q
 	defer rows.Close()
 
 	type vecRow struct {
-		id        int64
-		result    ArchivalResult
+		id         int64
+		result     ArchivalResult
 		similarity float32
 	}
 
