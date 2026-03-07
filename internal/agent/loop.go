@@ -54,6 +54,7 @@ type Loop struct {
 	reflector          *Reflector
 	prefMgr            *PreferenceManager
 	planner            *Planner
+	daemonStartedAt    time.Time
 }
 
 type LoopConfig struct {
@@ -84,6 +85,7 @@ type LoopConfig struct {
 	Reflector          *Reflector                 // optional, nil disables self-reflection
 	PrefManager        *PreferenceManager         // optional, nil disables adaptive preferences
 	Planner            *Planner                   // optional, nil disables plan-and-execute
+	DaemonStartedAt    time.Time                  // zero value acceptable; snapshot builder handles zero case
 }
 
 func NewLoop(cfg LoopConfig) *Loop {
@@ -156,8 +158,20 @@ func NewLoop(cfg LoopConfig) *Loop {
 		reflector:          cfg.Reflector,
 		prefMgr:            cfg.PrefManager,
 		planner:            cfg.Planner,
+		daemonStartedAt:    cfg.DaemonStartedAt,
 	}
 }
+
+// SelfKnowledgeProvider accessor methods — make Loop satisfy agentapi.SelfKnowledgeProvider.
+func (l *Loop) GetAgentName() string                       { return l.agentName }
+func (l *Loop) GetModelName() string                       { return l.modelName }
+func (l *Loop) GetProviderName() string                    { return l.providerName }
+func (l *Loop) GetChannelType() string                     { return l.channelType }
+func (l *Loop) GetDaemonStartedAt() time.Time              { return l.daemonStartedAt }
+func (l *Loop) GetActiveSkills() []skills.Skill            { return l.skills }
+func (l *Loop) GetInactiveSkills() []skills.InactiveSkill  { return nil }
+func (l *Loop) GetCostTracker() *observability.CostTracker { return l.costTracker }
+func (l *Loop) GetUserID() string                          { return l.userID }
 
 func (l *Loop) Run(ctx context.Context, userMessage string) (*Execution, error) {
 	execution := NewExecution(l.maxTurns)
@@ -505,27 +519,10 @@ func (l *Loop) buildSystemPrompt(ctx context.Context) (string, error) {
 	var runtime strings.Builder
 	runtime.WriteString("# Runtime Context\n")
 	runtime.WriteString(fmt.Sprintf("Current time: %s\n", time.Now().Format("2006-01-02 15:04:05 MST")))
-	if l.agentName != "" {
-		runtime.WriteString(fmt.Sprintf("Agent: %s\n", l.agentName))
-	}
-	if l.modelName != "" {
-		runtime.WriteString(fmt.Sprintf("LLM Model: %s\n", l.modelName))
-	}
-	if l.providerName != "" {
-		runtime.WriteString(fmt.Sprintf("LLM Provider: %s\n", l.providerName))
-	}
-	if l.channelType != "" {
-		runtime.WriteString(fmt.Sprintf("Channel: %s\n", l.channelType))
-	}
-	if len(l.skills) > 0 {
-		skillNames := make([]string, len(l.skills))
-		for i, s := range l.skills {
-			skillNames[i] = s.Name
-		}
-		runtime.WriteString(fmt.Sprintf("Active skills: %s\n", strings.Join(skillNames, ", ")))
-	}
+	snap := BuildSelfKnowledgeSnapshot(ctx, l, false)
+	runtime.WriteString(snap.CompactSummary())
 	if len(defs) > 0 {
-		runtime.WriteString(fmt.Sprintf("Available tools: %d\n", len(defs)))
+		runtime.WriteString(fmt.Sprintf("\nAvailable tools: %d\n", len(defs)))
 	}
 	sections = append(sections, strings.TrimSpace(runtime.String()))
 
