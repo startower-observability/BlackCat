@@ -44,7 +44,7 @@ func (t *AgentSelfStatusTool) Execute(ctx context.Context, params json.RawMessag
 		_ = json.Unmarshal(params, &args)
 	}
 
-	snap := agentapi.BuildSelfKnowledgeSnapshot(ctx, t.provider, args.Full)
+	snap := agentapi.BuildSelfKnowledgeSnapshot(ctx, t.provider, args.Full, nil)
 
 	data, err := json.MarshalIndent(snap, "", "  ")
 	if err != nil {

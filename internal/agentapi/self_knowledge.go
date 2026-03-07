@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/startower-observability/blackcat/internal/observability"
+	"github.com/startower-observability/blackcat/internal/scheduler"
 	"github.com/startower-observability/blackcat/internal/skills"
 	"github.com/startower-observability/blackcat/internal/version"
 )
@@ -69,9 +70,26 @@ type SelfKnowledgeSnapshot struct {
 	UnavailableFields []string `json:"unavailable_fields,omitempty"`
 }
 
+// SelfKnowledgeExtras holds optional runtime subsystems for Phase 5 snapshot enrichment.
+// All fields are nil-safe — missing fields degrade gracefully.
+// Callers that do not need Phase 5 enrichment should pass nil.
+type SelfKnowledgeExtras struct {
+	// Roles is the pre-computed list of role views (avoids cycle with internal/agent).
+	Roles []RoleView
+	// SkillInventory is the full skill inventory (active + inactive) for enriched counts.
+	SkillInventory *skills.Inventory
+	// SchedulerSubsystem provides runtime scheduler state for enabled/task-count fields.
+	SchedulerSubsystem *scheduler.SchedulerSubsystem
+	// ProviderCatalog is the pre-fetched list of provider catalog entries.
+	// Use this instead of *llm.ProviderCatalogCache to avoid an import cycle
+	// (llm imports agentapi).
+	ProviderCatalog []CatalogEntry
+}
+
 // BuildSelfKnowledgeSnapshot constructs a snapshot from the given provider.
 // If fullMode is true, inactive skill details are populated.
-func BuildSelfKnowledgeSnapshot(ctx context.Context, p SelfKnowledgeProvider, fullMode bool) SelfKnowledgeSnapshot {
+// extras may be nil; when non-nil its fields enrich the Phase 5 snapshot sections.
+func BuildSelfKnowledgeSnapshot(ctx context.Context, p SelfKnowledgeProvider, fullMode bool, extras *SelfKnowledgeExtras) SelfKnowledgeSnapshot {
 	snap := SelfKnowledgeSnapshot{
 		Version:   version.Version,
 		Commit:    version.Commit,
@@ -117,6 +135,31 @@ func BuildSelfKnowledgeSnapshot(ctx context.Context, p SelfKnowledgeProvider, fu
 
 	// CacheUsage always unavailable
 	snap.UnavailableFields = append(snap.UnavailableFields, "CacheUsage")
+
+	// Phase 5 enrichment from extras
+	if extras != nil {
+		// Roles
+		if len(extras.Roles) > 0 {
+			snap.Roles = extras.Roles
+		}
+		// Skills (full inventory with redacted inactive details)
+		if extras.SkillInventory != nil {
+			invSnap := skills.BuildSkillInventorySnapshot(extras.SkillInventory)
+			snap.ActiveSkillCount = invSnap.ActiveCount
+			snap.ActiveSkillNames = invSnap.ActiveNames
+			snap.InactiveSkillCount = invSnap.InactiveCount
+		}
+		// Scheduler
+		if extras.SchedulerSubsystem != nil {
+			schedSnap := scheduler.BuildSchedulerStatusSnapshot(extras.SchedulerSubsystem)
+			snap.SchedulerEnabled = schedSnap.Enabled
+			snap.SchedulerTaskCount = schedSnap.TaskCount
+		}
+		// Provider catalog
+		if len(extras.ProviderCatalog) > 0 {
+			snap.ProviderCatalog = extras.ProviderCatalog
+		}
+	}
 
 	return snap
 }
