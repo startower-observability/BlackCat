@@ -8,14 +8,16 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"github.com/startower-observability/blackcat/internal/version"
 )
 
 var cfgFile string
 
 // rootCmd is the base command for the blackcat CLI.
 var rootCmd = &cobra.Command{
-	Use:   "blackcat",
-	Short: "BlackCat — AI agent orchestrating OpenCode",
+	Use:     "blackcat",
+	Short:   "BlackCat — AI agent orchestrating OpenCode",
+	Version: version.Info(),
 	Long: `BlackCat is a Go-based AI agent that orchestrates OpenCode.
 
 It can spawn and supervise an opencode server, submit coding tasks,

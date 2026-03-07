@@ -1,19 +1,25 @@
 # BlackCat Makefile
 # Usage: make [target]
 
-BINARY  := blackcat
-GOOS    ?= $(shell go env GOOS)
-GOARCH  ?= $(shell go env GOARCH)
+BINARY      := blackcat
+GOOS        ?= $(shell go env GOOS)
+GOARCH      ?= $(shell go env GOARCH)
+VERSION     := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+COMMIT      := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
+BUILD_DATE  := $(shell date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo '')
+LDFLAGS     := -X github.com/startower-observability/blackcat/internal/version.Version=$(VERSION) \
+               -X github.com/startower-observability/blackcat/internal/version.Commit=$(COMMIT) \
+               -X github.com/startower-observability/blackcat/internal/version.BuildDate=$(BUILD_DATE)
 
 .PHONY: build build-linux test vet deploy deploy-no-push verify clean help web-install web build-all dev-web
 
 ## build: Build binary for current OS/arch
 build:
-	go build -o $(BINARY) .
+	go build -ldflags "$(LDFLAGS)" -o $(BINARY) .
 
 ## build-linux: Cross-compile for Linux amd64 (for VM deploy)
 build-linux:
-	GOOS=linux GOARCH=amd64 go build -o $(BINARY)-linux-amd64 .
+	GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(BINARY)-linux-amd64 .
 
 ## test: Run all tests
 test:
@@ -54,7 +60,7 @@ web:
 
 ## build-all: Build React SPA then Go binary with embedded assets
 build-all: web
-	CGO_ENABLED=1 go build -tags fts5 -o blackcat .
+	CGO_ENABLED=1 go build -tags fts5 -ldflags "$(LDFLAGS)" -o blackcat .
 
 ## dev-web: Start Vite dev server (proxies /dashboard/api to :8081)
 dev-web:

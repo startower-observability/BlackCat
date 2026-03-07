@@ -618,3 +618,193 @@ func TestGetBinaryVersion_NonexistentBinary(t *testing.T) {
 		t.Errorf("expected empty version for nonexistent binary, got %q", v)
 	}
 }
+
+// TestLoadSkillInventory tests that LoadSkillInventory scans once and classifies skills
+func TestLoadSkillInventory(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create eligible skill (no requirements)
+	eligibleContent := `---
+name: Eligible Skill
+requires:
+  bins: []
+  env: []
+---
+This skill is eligible.`
+
+	// Create ineligible skill (missing binary)
+	ineligibleContent := `---
+name: Ineligible Skill
+requires:
+  bins:
+    - nonexistent_binary_12345
+---
+This skill is ineligible.`
+
+	err := os.WriteFile(filepath.Join(tmpDir, "eligible.md"), []byte(eligibleContent), 0644)
+	if err != nil {
+		t.Fatalf("failed to write eligible skill: %v", err)
+	}
+
+	err = os.WriteFile(filepath.Join(tmpDir, "ineligible.md"), []byte(ineligibleContent), 0644)
+	if err != nil {
+		t.Fatalf("failed to write ineligible skill: %v", err)
+	}
+
+	// Load inventory
+	inventory, err := LoadSkillInventory([]string{tmpDir})
+	if err != nil {
+		t.Fatalf("LoadSkillInventory failed: %v", err)
+	}
+
+	// Verify active count
+	if len(inventory.Active) != 1 {
+		t.Fatalf("expected 1 active skill, got %d", len(inventory.Active))
+	}
+
+	if inventory.Active[0].Name != "Eligible Skill" {
+		t.Errorf("expected 'Eligible Skill', got '%s'", inventory.Active[0].Name)
+	}
+
+	// Verify inactive count and reason
+	if len(inventory.Inactive) != 1 {
+		t.Fatalf("expected 1 inactive skill, got %d", len(inventory.Inactive))
+	}
+
+	inactiveSkill := inventory.Inactive[0]
+	if inactiveSkill.Name != "Ineligible Skill" {
+		t.Errorf("expected 'Ineligible Skill', got '%s'", inactiveSkill.Name)
+	}
+
+	// Verify reason string format
+	if !strings.Contains(inactiveSkill.Reason, "missing binary: nonexistent_binary_12345") {
+		t.Errorf("expected reason to contain 'missing binary: nonexistent_binary_12345', got '%s'", inactiveSkill.Reason)
+	}
+
+	// Verify missing bins list
+	if len(inactiveSkill.MissingBins) != 1 || inactiveSkill.MissingBins[0] != "nonexistent_binary_12345" {
+		t.Errorf("expected MissingBins=[nonexistent_binary_12345], got %v", inactiveSkill.MissingBins)
+	}
+}
+
+// TestGetInactiveSkills tests that GetInactiveSkills returns only inactive skills
+func TestGetInactiveSkills(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create eligible skill
+	eligibleContent := `---
+name: Eligible
+requires:
+  bins: []
+  env: []
+---
+Eligible content.`
+
+	// Create ineligible skill with missing binary
+	ineligibleBinContent := `---
+name: Missing Binary
+requires:
+  bins:
+    - fake_bin_xyz
+---
+Missing binary.`
+
+	// Create ineligible skill with missing env
+	ineligibleEnvContent := `---
+name: Missing Env
+requires:
+  bins: []
+  env:
+    - FAKE_ENV_VAR_12345
+---
+Missing env var.`
+
+	err := os.WriteFile(filepath.Join(tmpDir, "eligible.md"), []byte(eligibleContent), 0644)
+	if err != nil {
+		t.Fatalf("failed to write eligible: %v", err)
+	}
+	err = os.WriteFile(filepath.Join(tmpDir, "missing_bin.md"), []byte(ineligibleBinContent), 0644)
+	if err != nil {
+		t.Fatalf("failed to write missing bin: %v", err)
+	}
+	err = os.WriteFile(filepath.Join(tmpDir, "missing_env.md"), []byte(ineligibleEnvContent), 0644)
+	if err != nil {
+		t.Fatalf("failed to write missing env: %v", err)
+	}
+
+	// Get inactive skills
+	inactiveSkills, err := GetInactiveSkills([]string{tmpDir})
+	if err != nil {
+		t.Fatalf("GetInactiveSkills failed: %v", err)
+	}
+
+	if len(inactiveSkills) != 2 {
+		t.Fatalf("expected 2 inactive skills, got %d", len(inactiveSkills))
+	}
+
+	// Verify binary reason
+	binSkill := inactiveSkills[0]
+	if !strings.Contains(binSkill.Reason, "missing binary: fake_bin_xyz") {
+		t.Errorf("expected reason to mention missing binary, got '%s'", binSkill.Reason)
+	}
+
+	// Verify env reason
+	envSkill := inactiveSkills[1]
+	if !strings.Contains(envSkill.Reason, "missing env var: FAKE_ENV_VAR_12345") {
+		t.Errorf("expected reason to mention missing env var, got '%s'", envSkill.Reason)
+	}
+}
+
+// TestLoadSkillInventoryDeduplication tests that earlier dirs take precedence
+func TestLoadSkillInventoryDeduplication(t *testing.T) {
+	dir1 := t.TempDir()
+	dir2 := t.TempDir()
+
+	// Create same skill name in both directories with different content
+	skill1Content := `---
+name: Duplicate Skill
+requires:
+  bins: []
+  env: []
+---
+Content from dir1.`
+
+	skill2Content := `---
+name: Duplicate Skill
+requires:
+  bins: []
+  env: []
+---
+Content from dir2.`
+
+	err := os.WriteFile(filepath.Join(dir1, "duplicate.md"), []byte(skill1Content), 0644)
+	if err != nil {
+		t.Fatalf("failed to write skill1: %v", err)
+	}
+
+	err = os.WriteFile(filepath.Join(dir2, "duplicate.md"), []byte(skill2Content), 0644)
+	if err != nil {
+		t.Fatalf("failed to write skill2: %v", err)
+	}
+
+	// Load inventory from both dirs (dir1 first)
+	inventory, err := LoadSkillInventory([]string{dir1, dir2})
+	if err != nil {
+		t.Fatalf("LoadSkillInventory failed: %v", err)
+	}
+
+	// Should only have 1 active skill (dir1 version)
+	if len(inventory.Active) != 1 {
+		t.Fatalf("expected 1 active skill (deduplicated), got %d", len(inventory.Active))
+	}
+
+	// Verify it's the dir1 content
+	if !strings.Contains(inventory.Active[0].Content, "Content from dir1") {
+		t.Error("Expected first occurrence (dir1) to be used")
+	}
+
+	// No inactive skills
+	if len(inventory.Inactive) != 0 {
+		t.Fatalf("expected 0 inactive skills, got %d", len(inventory.Inactive))
+	}
+}

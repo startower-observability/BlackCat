@@ -43,6 +43,21 @@ func ValidateVersion(v string) (string, error) {
 	return canonical, nil
 }
 
+// InactiveSkill represents a skill that could not be activated due to missing requirements
+type InactiveSkill struct {
+	Name        string   // skill name
+	FilePath    string   // path to the markdown file
+	Reason      string   // human-readable reason(s) for inactivity
+	MissingBins []string // binaries that are missing
+	MissingEnv  []string // environment variables that are missing
+}
+
+// Inventory represents a collection of active and inactive skills from a single scan
+type Inventory struct {
+	Active   []Skill
+	Inactive []InactiveSkill
+}
+
 // IsEligible checks if a skill's requirements are met.
 // Returns true if all required binaries are on PATH and all required env vars are set.
 func (s *Skill) IsEligible() bool {
@@ -270,31 +285,100 @@ func parseSkillFile(content string, filePath string, filename string) Skill {
 	return skill
 }
 
-// LoadSkillsFromMultipleSources loads skills from multiple directories with precedence.
-// Earlier directories have higher priority — if the same skill name exists in multiple
-// directories, only the first occurrence is kept.
-// Returns eligible skills only (those with satisfied requirements).
-func LoadSkillsFromMultipleSources(dirs []string) ([]Skill, error) {
+// LoadSkillInventory loads all skills from multiple directories and classifies them as active or inactive.
+// Performs a single scan across all directories, deduplicating by skill name with earlier directories taking precedence.
+// Returns both active and inactive skills with detailed reasoning for inactivity.
+func LoadSkillInventory(dirs []string) (Inventory, error) {
 	seen := make(map[string]bool)
-	var all []Skill
+	var active []Skill
+	var inactive []InactiveSkill
+
 	for _, dir := range dirs {
 		skills, err := LoadSkills(dir)
 		if err != nil {
 			continue // skip missing directories
 		}
+
 		for _, s := range skills {
-			if !seen[s.Name] && s.IsEligible() {
-				seen[s.Name] = true
-				all = append(all, s)
+			if seen[s.Name] {
+				continue // skip duplicates (earlier dir wins)
+			}
+			seen[s.Name] = true
+
+			if s.IsEligible() {
+				// Skill is active
+				active = append(active, s)
+			} else {
+				// Skill is inactive - determine why
+				inactiveSkill := buildInactiveSkill(&s)
+				inactive = append(inactive, inactiveSkill)
 			}
 		}
 	}
-	sorted, err := ResolveDependencies(all)
-	if err != nil {
-		log.Printf("skills: dependency resolution warning: %v; loading without dependency order", err)
-		return all, nil
+
+	return Inventory{Active: active, Inactive: inactive}, nil
+}
+
+// buildInactiveSkill constructs an InactiveSkill with detailed missing requirements information
+func buildInactiveSkill(s *Skill) InactiveSkill {
+	var missingBins []string
+	var missingEnv []string
+
+	// Check which binaries are missing
+	for _, bin := range s.Requires.Bins {
+		if _, err := exec.LookPath(bin); err != nil {
+			missingBins = append(missingBins, bin)
+		}
 	}
-	return sorted, nil
+
+	// Check which env vars are missing
+	for _, env := range s.Requires.Env {
+		if os.Getenv(env) == "" {
+			missingEnv = append(missingEnv, env)
+		}
+	}
+
+	// Build reason string
+	var reasons []string
+	for _, bin := range missingBins {
+		reasons = append(reasons, fmt.Sprintf("missing binary: %s", bin))
+	}
+	for _, env := range missingEnv {
+		reasons = append(reasons, fmt.Sprintf("missing env var: %s", env))
+	}
+
+	reasonStr := strings.Join(reasons, "; ")
+
+	return InactiveSkill{
+		Name:        s.Name,
+		FilePath:    s.FilePath,
+		Reason:      reasonStr,
+		MissingBins: missingBins,
+		MissingEnv:  missingEnv,
+	}
+}
+
+// GetInactiveSkills returns only the inactive skills from multiple directories.
+// This is a convenience wrapper around LoadSkillInventory.
+func GetInactiveSkills(dirs []string) ([]InactiveSkill, error) {
+	inventory, err := LoadSkillInventory(dirs)
+	if err != nil {
+		return nil, err
+	}
+	return inventory.Inactive, nil
+}
+
+// LoadSkillsFromMultipleSources loads skills from multiple directories with precedence.
+// Earlier directories have higher priority — if the same skill name exists in multiple
+// directories, only the first occurrence is kept.
+// Returns eligible skills only (those with satisfied requirements).
+// This is now implemented as a backward-compatible wrapper around LoadSkillInventory.
+func LoadSkillsFromMultipleSources(dirs []string) ([]Skill, error) {
+	inventory, err := LoadSkillInventory(dirs)
+	if err != nil {
+		return nil, err
+	}
+	return inventory.Active, nil
 }
 
 // FormatForInjection formats skills as context blocks for system prompt injection
