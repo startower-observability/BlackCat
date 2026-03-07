@@ -68,6 +68,8 @@ func init() {
 }
 
 func runDaemon(cmd *cobra.Command, args []string) error {
+	daemonStartedAt := time.Now() // Capture startup time before any I/O for session-aware runtime surfaces
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -157,6 +159,9 @@ func runDaemon(cmd *cobra.Command, args []string) error {
 	if sqliteMemStore != nil {
 		coreStore = memory.NewCoreStore(sqliteMemStore.DB())
 	}
+
+	// Create preference manager for adaptive behaviour + explicit learning
+	prefMgr := agent.NewPreferenceManager(coreStore)
 
 	// Create cost tracker (shares the SQLite DB)
 	var costTracker *observability.CostTracker
@@ -399,7 +404,13 @@ func runDaemon(cmd *cobra.Command, args []string) error {
 		Reflector:        agent.NewReflector(agentLLM, sqliteMemStore),
 		PrefManager:      agent.NewPreferenceManager(coreStore),
 		Planner:          agent.NewPlanner(agentLLM),
+		DaemonStartedAt:  daemonStartedAt,
 	}
+	// Register agent_self_status tool with a static adapter over baseLoopCfg.
+	// The Loop is created per-request, but the tool registry is shared; this
+	// adapter exposes the static config fields that don't change per-request.
+	registry.Register(tools.NewAgentSelfStatusTool(&loopConfigProvider{cfg: &baseLoopCfg}))
+
 	// Build role-specific LLM backends from config.
 	roleBackends := make(map[agent.RoleType]types.LLMClient, len(cfg.Roles))
 	for _, role := range cfg.Roles {
@@ -414,6 +425,12 @@ func runDaemon(cmd *cobra.Command, args []string) error {
 		roleBackends[agent.RoleType(role.Name)] = &backendAdapter{backend: b}
 	}
 	supervisor := agent.NewSupervisor(baseLoopCfg, cfg.Roles, roleBackends)
+
+	// Session-rollover conversation reflector: archives insights from stale/expired sessions
+	var convReflector *agent.ConversationReflector
+	if sqliteMemStore != nil && agentLLM != nil {
+		convReflector = agent.NewConversationReflector(agentLLM, sqliteMemStore)
+	}
 
 	bus := channel.NewMessageBus(256)
 	var whatsAppChannel *whatsapp.WhatsAppChannel
@@ -675,6 +692,24 @@ func runDaemon(cmd *cobra.Command, args []string) error {
 					UserID:      m.UserID, // E3: empty UserID → channelID-only key handled by SessionKey.String()
 				}
 				loopCfg.SessionID = key.String()
+
+				// Session-rollover reflection: if prior session is stale/expired, archive insights
+				if sessionStore != nil && convReflector != nil {
+					lookup, lookupErr := sessionStore.GetWithState(key)
+					if lookupErr == nil && lookup != nil &&
+						(lookup.State == session.SessionStateStale || lookup.State == session.SessionStateExpired) {
+						reflectCtx, reflectCancel := context.WithTimeout(ctx, 15*time.Second)
+						if reflectErr := convReflector.Reflect(reflectCtx, m.UserID, lookup.Session.Messages); reflectErr != nil {
+							slog.Warn("conversation reflection failed", "err", reflectErr, "user", m.UserID)
+						}
+						reflectCancel()
+						// Delete stale session so the new turn starts fresh
+						if delErr := sessionStore.Delete(key); delErr != nil {
+							slog.Warn("failed to delete stale session", "err", delErr, "key", key.String())
+						}
+					}
+				}
+
 				if sessionStore != nil {
 					sess, sessErr := sessionStore.Get(key)
 					if sessErr != nil {
@@ -836,6 +871,13 @@ func runDaemon(cmd *cobra.Command, args []string) error {
 					)
 				}
 				response = scrubber.Scrub(response)
+
+				// Per-turn explicit user knowledge learning
+				if runErr == nil && prefMgr != nil {
+					if learnErr := agent.ApplyExplicitLearning(ctx, m.UserID, m.Content, coreStore, prefMgr); learnErr != nil {
+						slog.Warn("explicit learning failed", "err", learnErr, "user", m.UserID)
+					}
+				}
 
 				// Save interaction to memory
 				if sqliteMemStore != nil {
@@ -1397,3 +1439,18 @@ func (b *busReconnector) UnhealthyReconnectable() []scheduler.ReconnectableChann
 	}
 	return out
 }
+
+// loopConfigProvider wraps agent.LoopConfig to satisfy agentapi.SelfKnowledgeProvider
+// at daemon startup, before any per-request Loop is created. It exposes static
+// config fields; per-request fields (ChannelType, UserID) return empty/default values.
+type loopConfigProvider struct{ cfg *agent.LoopConfig }
+
+func (p *loopConfigProvider) GetAgentName() string                       { return p.cfg.AgentName }
+func (p *loopConfigProvider) GetModelName() string                       { return p.cfg.ModelName }
+func (p *loopConfigProvider) GetProviderName() string                    { return p.cfg.ProviderName }
+func (p *loopConfigProvider) GetChannelType() string                     { return p.cfg.ChannelType }
+func (p *loopConfigProvider) GetDaemonStartedAt() time.Time              { return p.cfg.DaemonStartedAt }
+func (p *loopConfigProvider) GetActiveSkills() []skills.Skill            { return p.cfg.Skills }
+func (p *loopConfigProvider) GetInactiveSkills() []skills.InactiveSkill  { return nil }
+func (p *loopConfigProvider) GetCostTracker() *observability.CostTracker { return p.cfg.CostTracker }
+func (p *loopConfigProvider) GetUserID() string                          { return p.cfg.UserID }
