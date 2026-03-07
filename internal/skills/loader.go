@@ -3,7 +3,6 @@ package skills
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
