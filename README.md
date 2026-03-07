@@ -3,11 +3,15 @@
 
 # BlackCat 🐈‍⬛
 
-**A black cat sorcerer that bridges your messaging channels to a full AI coding environment.**
+**An AI environment that fits in your pocket. Message from anywhere, and a team of specialists gets to work.**
 
-BlackCat is a Go daemon that sits between your chat apps (Telegram, Discord, WhatsApp) and [OpenCode CLI](https://opencode.ai). Send a message, and your digital familiar conjures code changes, runs commands, and reports back — all from your phone.
+BlackCat is a Go daemon that lives between your messaging apps and a full AI platform. Send a text from Telegram, Discord, or WhatsApp, and your message doesn't just hit a generic chatbot. It gets read, routed, and handled by the right specialist for the job.
 
-Once summoned, the sorcery is autonomous: BlackCat handles LLM orchestration, tool delegation, encrypted secret storage, scheduled tasks, and a pixel-art dashboard where a cat reacts to your system state in real-time.
+Say "deploy the service" and **Phantom** spins up your infrastructure. Say "debug this function" and **Wizard** fires up OpenCode CLI to refactor your code. Say "write a thread about this" and **Artist** crafts the content. Say "summarize this article" and **Scribe** takes the notes. Say "what's BTC doing?" and **Astrology** checks the markets. Anything else falls to **Oracle**, the generalist that catches what the specialists miss.
+
+Beneath the routing sits a complete AI ecosystem: 8 LLM providers with automatic fallback chains and budget controls. Built-in skills for Threads, Twitter/X, LinkedIn, Facebook, and TikTok. Voice-to-text via Groq Whisper so you can send voice notes. Scheduled cron jobs that ping your channels. A Skills Marketplace for community extensions. AES-256-GCM encrypted vault for your secrets. And a pixel-art cat dashboard at `localhost:8081` that reacts to your system state in real-time.
+
+One daemon. One `blackcat onboard`. You're live.
 
 ## Highlights
 
