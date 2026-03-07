@@ -56,6 +56,12 @@ type SelfKnowledgeSnapshot struct {
 	TokenUsage24h string `json:"token_usage_24h"` // e.g. "1234 in / 567 out" or "unavailable"
 	CacheUsage    string `json:"cache_usage"`     // always "unavailable"
 
+	// Phase 5 extensions
+	Roles              []RoleView     `json:"roles,omitempty"`
+	SchedulerEnabled   bool           `json:"scheduler_enabled"`
+	SchedulerTaskCount int            `json:"scheduler_task_count,omitempty"`
+	ProviderCatalog    []CatalogEntry `json:"provider_catalog,omitempty"`
+
 	// Mode
 	FullMode bool `json:"full_mode"`
 
