@@ -101,7 +101,21 @@ var doctorCmd = &cobra.Command{
 			warned++
 		}
 
-		// Check 6: Daemon service installed.
+		// Check 6: RTK binary accessible (optional).
+		if viper.GetBool("rtk.enabled") {
+			if rtkPath, err := exec.LookPath("rtk"); err == nil {
+				printCheck(true, fmt.Sprintf("RTK binary found (%s)", rtkPath))
+				passed++
+			} else {
+				printWarn("RTK wrapping enabled but 'rtk' not found in PATH")
+				warned++
+			}
+		} else {
+			printCheck(true, "RTK wrapping disabled (optional)")
+			passed++
+		}
+
+		// Check 7: Daemon service installed.
 		mgr := service.New()
 		if mgr.IsInstalled() {
 			printCheck(true, "Daemon service installed")

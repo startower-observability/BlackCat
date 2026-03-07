@@ -3,6 +3,8 @@ package config
 import (
 	"errors"
 	"fmt"
+	"os"
+	"os/exec"
 )
 
 // ValidateDeep performs deep validation of config values beyond basic presence checks.
@@ -53,6 +55,37 @@ func ValidateDeep(c *Config) error {
 			if job.Schedule == "" {
 				errs = append(errs, fmt.Errorf("scheduler.jobs[%d].schedule must not be empty when enabled", i))
 			}
+		}
+	}
+
+	// Validate Roles
+	seenNames := make(map[string]bool, len(c.Roles))
+	seenPriorities := make(map[int]string, len(c.Roles))
+	for i, role := range c.Roles {
+		if role.Name == "" {
+			errs = append(errs, fmt.Errorf("roles[%d].name must not be empty", i))
+		} else {
+			if seenNames[role.Name] {
+				errs = append(errs, fmt.Errorf("roles[%d].name %q is a duplicate", i, role.Name))
+			}
+			seenNames[role.Name] = true
+		}
+		if role.Priority < 0 {
+			errs = append(errs, fmt.Errorf("roles[%d].priority must be >= 0, got %d", i, role.Priority))
+		} else if prev, ok := seenPriorities[role.Priority]; ok {
+			fmt.Fprintf(os.Stderr, "WARN: roles[%d] %q has same priority %d as %q\n", i, role.Name, role.Priority, prev)
+		} else {
+			seenPriorities[role.Priority] = role.Name
+		}
+		if role.Temperature != 0 && (role.Temperature < 0 || role.Temperature > 2.0) {
+			errs = append(errs, fmt.Errorf("roles[%d].temperature must be in [0.0, 2.0], got %f", i, role.Temperature))
+		}
+	}
+
+	// Validate RTK — warn if enabled but binary not in PATH
+	if c.RTK.Enabled {
+		if _, err := exec.LookPath("rtk"); err != nil {
+			fmt.Fprintf(os.Stderr, "WARN: rtk.enabled is true but 'rtk' binary not found in PATH\n")
 		}
 	}
 

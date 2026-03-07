@@ -27,6 +27,8 @@ type Config struct {
 	RateLimit    RateLimitConfig    `yaml:"rateLimit"`    // Per-user rate limiting
 	Whisper      WhisperConfig      `yaml:"whisper"`      // Groq Whisper voice-to-text configuration
 	Budget       BudgetConfig       `yaml:"budget"`       // Per-user spend limits
+	Roles        []RoleConfig       `yaml:"roles"`        // Agent role definitions
+	RTK          RTKConfig          `yaml:"rtk"`          // RTK token optimization settings
 
 }
 
@@ -331,6 +333,24 @@ type BudgetConfig struct {
 	WarnThreshold   float64 `yaml:"warn_threshold"` // 0.0-1.0, default 0.8
 }
 
+// RoleConfig defines a single agent role with routing keywords and tool access.
+type RoleConfig struct {
+	Name         string   `yaml:"name"`
+	Model        string   `yaml:"model"`
+	Provider     string   `yaml:"provider"`
+	Temperature  float64  `yaml:"temperature"`
+	SystemPrompt string   `yaml:"systemPrompt"`
+	Keywords     []string `yaml:"keywords"`
+	AllowedTools []string `yaml:"allowedTools"`
+	Priority     int      `yaml:"priority"`
+}
+
+// RTKConfig holds RTK (Rust Token Killer) integration settings.
+type RTKConfig struct {
+	Enabled  bool     `yaml:"enabled"`
+	Commands []string `yaml:"commands"`
+}
+
 // Validate applies defaults and enforces constraints on the Config.
 func (c *Config) Validate() {
 	// Dashboard defaults
@@ -406,5 +426,23 @@ func (c *Config) Validate() {
 	// Budget defaults
 	if c.Budget.Enabled && c.Budget.WarnThreshold == 0 {
 		c.Budget.WarnThreshold = 0.8
+	}
+
+	// Roles defaults — populate 7 default roles if none configured
+	if len(c.Roles) == 0 {
+		c.Roles = []RoleConfig{
+			{Name: "phantom", Model: "", Provider: "", Temperature: 0.7, SystemPrompt: "", Keywords: []string{"restart", "deploy", "server", "status", "docker", "systemctl", "health", "infra", "devops", "service", "nginx", "ssl"}, AllowedTools: nil, Priority: 10},
+			{Name: "astrology", Model: "", Provider: "", Temperature: 0.7, SystemPrompt: "", Keywords: []string{"crypto", "bitcoin", "btc", "eth", "ethereum", "trading", "token", "defi", "nft", "wallet", "market", "portfolio", "investment", "stock", "forex", "chart", "candlestick", "pump", "whale"}, AllowedTools: nil, Priority: 20},
+			{Name: "wizard", Model: "", Provider: "", Temperature: 0.7, SystemPrompt: "", Keywords: []string{"code", "implement", "function", "bug", "fix", "test", "build", "compile", "git", "deploy", "opencode", "typescript", "golang", "python", "javascript", "refactor", "debug", "api", "endpoint", "database", "sql", "migration"}, AllowedTools: nil, Priority: 30},
+			{Name: "artist", Model: "", Provider: "", Temperature: 0.7, SystemPrompt: "", Keywords: []string{"instagram", "tiktok", "twitter", "linkedin", "facebook", "threads", "post", "caption", "hashtag", "reel", "story", "content", "social", "viral", "engagement", "schedule", "publish"}, AllowedTools: nil, Priority: 40},
+			{Name: "scribe", Model: "", Provider: "", Temperature: 0.7, SystemPrompt: "", Keywords: []string{"write", "draft", "article", "blog", "email", "document", "copy", "copywriting", "proofread", "translate", "summarize", "report", "newsletter", "pitch", "proposal"}, AllowedTools: nil, Priority: 50},
+			{Name: "explorer", Model: "", Provider: "", Temperature: 0.7, SystemPrompt: "", Keywords: []string{"search", "find", "look up", "what is", "explain", "research", "summarize", "web", "browse", "read", "compare", "analyze", "review", "investigate"}, AllowedTools: []string{"memory_search", "web_search", "archival_memory_search", "archival_memory_insert", "core_memory_get"}, Priority: 60},
+			{Name: "oracle", Model: "", Provider: "", Temperature: 0.7, SystemPrompt: "", Keywords: nil, AllowedTools: nil, Priority: 100},
+		}
+	}
+
+	// RTK defaults — populate default commands if enabled but none configured
+	if c.RTK.Enabled && len(c.RTK.Commands) == 0 {
+		c.RTK.Commands = []string{"cargo", "tsc", "lint", "prettier", "next", "vitest", "playwright", "pnpm", "npm", "npx", "prisma", "docker", "kubectl", "git", "gh", "ls", "grep", "find"}
 	}
 }

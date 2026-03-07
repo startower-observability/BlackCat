@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
 
+	"github.com/startower-observability/blackcat/internal/config"
 	"github.com/startower-observability/blackcat/internal/security"
 )
 
@@ -49,10 +51,11 @@ type ExecTool struct {
 	workDir   string
 	timeout   time.Duration
 	maxOutput int
+	rtkConfig config.RTKConfig
 }
 
 // NewExecTool creates an ExecTool with the given deny list and defaults.
-func NewExecTool(denyList *security.DenyList, workDir string, timeout time.Duration) *ExecTool {
+func NewExecTool(denyList *security.DenyList, workDir string, timeout time.Duration, rtkConfig config.RTKConfig) *ExecTool {
 	if timeout <= 0 {
 		timeout = defaultExecTimeout
 	}
@@ -61,12 +64,32 @@ func NewExecTool(denyList *security.DenyList, workDir string, timeout time.Durat
 		workDir:   workDir,
 		timeout:   timeout,
 		maxOutput: defaultMaxOutput,
+		rtkConfig: rtkConfig,
 	}
 }
 
 func (t *ExecTool) Name() string                { return execToolName }
 func (t *ExecTool) Description() string         { return execToolDescription }
 func (t *ExecTool) Parameters() json.RawMessage { return execToolParameters }
+
+// wrapWithRTK prepends "rtk " to the command if RTK is enabled and the
+// base command is in the configured allow-list.
+func (t *ExecTool) wrapWithRTK(command string) string {
+	if !t.rtkConfig.Enabled {
+		return command
+	}
+	fields := strings.Fields(command)
+	if len(fields) == 0 {
+		return command
+	}
+	base := filepath.Base(fields[0])
+	for _, allowed := range t.rtkConfig.Commands {
+		if base == allowed {
+			return "rtk " + command
+		}
+	}
+	return command
+}
 
 // Execute runs a shell command after checking the deny list.
 func (t *ExecTool) Execute(ctx context.Context, args json.RawMessage) (string, error) {
@@ -92,6 +115,9 @@ func (t *ExecTool) Execute(ctx context.Context, args json.RawMessage) (string, e
 	if strings.Contains(params.Command, "opencode run") && !strings.Contains(params.Command, "--dir") {
 		return "", fmt.Errorf("exec: 'opencode run' requires --dir flag. Find the project directory first (e.g. find ~ -maxdepth 3 -name '.git' -type d) then add --dir /path/to/project")
 	}
+
+	// Wrap with RTK if the command's base binary is in the allow-list.
+	params.Command = t.wrapWithRTK(params.Command)
 
 	// Determine timeout: use param if provided, otherwise use default.
 	timeout := t.timeout

@@ -23,6 +23,24 @@ Once summoned, the sorcery is autonomous: BlackCat handles LLM orchestration, to
 | 🧹 | **Memory** | Persistent agent memory via MEMORY.md with auto-consolidation |
 | 🎙️ | **Voice Transcription** | Automatic voice-to-text via Groq Whisper for Telegram, Discord, WhatsApp |
 | 📱 | **Social Media Skills** | Built-in skills for Threads, Twitter/X, LinkedIn, Facebook, TikTok, Google Workspace |
+| 🎭 | **Role-Based Routing** | 7 configurable agent personas route messages by keyword matching |
+| ⚡ | **RTK Integration** | Optional token-saving wrapper for shell commands |
+
+## Role System
+
+BlackCat routes messages to specialized agent personas based on keyword matching. Each role has a priority level; higher priority roles are checked first. Messages matching a role's keywords are handled by that persona's system prompt and capabilities.
+
+| Role | Priority | Example Keywords | Description |
+|------|----------|------------------|-------------|
+| phantom | 10 | deploy, build, docker, k8s, helm, terraform | Infrastructure and DevOps automation |
+| astrology | 20 | crypto, token, price, chart, trading, eth, btc | Cryptocurrency and trading analysis |
+| wizard | 30 | code, refactor, debug, test, function, class | Coding and software development |
+| artist | 40 | post, tweet, thread, image, design, caption | Social media and creative content |
+| scribe | 50 | write, summarize, edit, draft, proofread | Writing and documentation tasks |
+| explorer | 60 | search, find, research, lookup, who, what | Research and information retrieval |
+| oracle | 100 | (fallback) | General-purpose fallback for unmatched messages |
+
+Roles are fully customizable via `blackcat.yaml`. Add, remove, or modify roles to match your workflow.
 
 ## Supported Providers
 

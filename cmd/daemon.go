@@ -275,7 +275,10 @@ func runDaemon(cmd *cobra.Command, args []string) error {
 	// message via readWorkspaceFile(). No restart needed for workspace file changes.
 
 	registry := tools.NewRegistry()
-	registry.Register(tools.NewExecTool(denyList, workspaceDir, 0))
+	registry.Register(tools.NewExecTool(denyList, workspaceDir, 0, cfg.RTK))
+	if cfg.RTK.Enabled {
+		slog.Info("RTK wrapping enabled", "commands", len(cfg.RTK.Commands))
+	}
 	registry.Register(tools.NewFilesystemTool(workspaceDir))
 	registry.Register(tools.NewWebTool(0))
 	if cfgFile != "" {
@@ -397,7 +400,20 @@ func runDaemon(cmd *cobra.Command, args []string) error {
 		PrefManager:      agent.NewPreferenceManager(coreStore),
 		Planner:          agent.NewPlanner(agentLLM),
 	}
-	supervisor := agent.NewSupervisor(baseLoopCfg)
+	// Build role-specific LLM backends from config.
+	roleBackends := make(map[agent.RoleType]types.LLMClient, len(cfg.Roles))
+	for _, role := range cfg.Roles {
+		if role.Provider == "" {
+			continue
+		}
+		b, err := createBackendByName(cfg, role.Provider)
+		if err != nil {
+			slog.Warn("role backend creation failed, skipping", "role", role.Name, "provider", role.Provider, "err", err)
+			continue
+		}
+		roleBackends[agent.RoleType(role.Name)] = &backendAdapter{backend: b}
+	}
+	supervisor := agent.NewSupervisor(baseLoopCfg, cfg.Roles, roleBackends)
 
 	bus := channel.NewMessageBus(256)
 	var whatsAppChannel *whatsapp.WhatsAppChannel

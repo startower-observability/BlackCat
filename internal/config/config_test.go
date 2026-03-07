@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -24,7 +25,7 @@ func TestDefaults(t *testing.T) {
 		t.Errorf("OpenCode.Addr = %q, want %q", cfg.OpenCode.Addr, "http://127.0.0.1:4096")
 	}
 	if cfg.OpenCode.Timeout.Duration != 30*time.Minute {
-		t.Errorf("OpenCode.Timeout = %v, want %v", cfg.OpenCode.Timeout, Duration{30*time.Minute})
+		t.Errorf("OpenCode.Timeout = %v, want %v", cfg.OpenCode.Timeout, Duration{30 * time.Minute})
 	}
 
 	// Check LLM defaults
@@ -332,7 +333,6 @@ mcp:
 	}
 }
 
-
 func TestWhatsAppAllowFrom(t *testing.T) {
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "test.yaml")
@@ -390,5 +390,95 @@ channels:
 
 	if len(cfg.Channels.WhatsApp.AllowFrom) != 0 {
 		t.Errorf("WhatsApp.AllowFrom length = %d, want 0", len(cfg.Channels.WhatsApp.AllowFrom))
+	}
+}
+
+// --- Phase 4 Wave 1: Roles & RTK Tests ---
+
+func TestValidatePopulatesDefaultRoles(t *testing.T) {
+	cfg := &Config{} // empty roles
+	cfg.Validate()
+
+	if len(cfg.Roles) != 7 {
+		t.Fatalf("Roles length = %d, want 7", len(cfg.Roles))
+	}
+
+	expectedNames := []string{"phantom", "astrology", "wizard", "artist", "scribe", "explorer", "oracle"}
+	for i, name := range expectedNames {
+		if cfg.Roles[i].Name != name {
+			t.Errorf("Roles[%d].Name = %q, want %q", i, cfg.Roles[i].Name, name)
+		}
+	}
+}
+
+func TestValidatePreservesCustomRoles(t *testing.T) {
+	custom := []RoleConfig{
+		{Name: "mybot", Model: "gpt-5", Temperature: 0.5, Keywords: []string{"hello"}, Priority: 1},
+	}
+	cfg := &Config{Roles: custom}
+	cfg.Validate()
+
+	if len(cfg.Roles) != 1 {
+		t.Fatalf("Roles length = %d, want 1 (custom not replaced)", len(cfg.Roles))
+	}
+	if cfg.Roles[0].Name != "mybot" {
+		t.Errorf("Roles[0].Name = %q, want %q", cfg.Roles[0].Name, "mybot")
+	}
+}
+
+func TestValidateDeepDuplicateRoleName(t *testing.T) {
+	cfg := &Config{
+		Roles: []RoleConfig{
+			{Name: "wizard", Priority: 10},
+			{Name: "wizard", Priority: 20},
+		},
+	}
+
+	err := ValidateDeep(cfg)
+	if err == nil {
+		t.Fatal("expected error for duplicate role name, got nil")
+	}
+	if !strings.Contains(err.Error(), "duplicate") {
+		t.Errorf("error = %q, want it to contain 'duplicate'", err.Error())
+	}
+}
+
+func TestValidateDeepRoleTemperatureOutOfRange(t *testing.T) {
+	cfg := &Config{
+		Roles: []RoleConfig{
+			{Name: "hot", Temperature: 3.0, Priority: 10},
+		},
+	}
+
+	err := ValidateDeep(cfg)
+	if err == nil {
+		t.Fatal("expected error for temperature 3.0, got nil")
+	}
+	if !strings.Contains(err.Error(), "temperature") {
+		t.Errorf("error = %q, want it to contain 'temperature'", err.Error())
+	}
+}
+
+func TestValidateRTKDefaultCommands(t *testing.T) {
+	cfg := &Config{
+		RTK: RTKConfig{Enabled: true}, // Commands empty
+	}
+	cfg.Validate()
+
+	if len(cfg.RTK.Commands) == 0 {
+		t.Fatal("RTK.Commands should be populated when Enabled=true and Commands empty")
+	}
+
+	// Verify a few expected defaults are present
+	expected := map[string]bool{"cargo": false, "git": false, "docker": false, "tsc": false}
+	for _, cmd := range cfg.RTK.Commands {
+		if _, ok := expected[cmd]; ok {
+			expected[cmd] = true
+		}
+	}
+	for cmd, found := range expected {
+		if !found {
+			t.Errorf("RTK.Commands missing expected default %q", cmd)
+		}
 	}
 }

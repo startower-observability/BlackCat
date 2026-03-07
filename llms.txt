@@ -230,3 +230,103 @@ The following additional built-in skills are available when prerequisites are me
 - DO use version field in marketplace skills for update-available detection
 - DON'T expect install hint to appear in the LLM context — it is doctor-only
 - DO run blackcat doctor after adding new marketplace skills to verify eligibility
+
+## Role-Based Routing (Phase 4)
+
+### How ClassifyMessage Works
+- Sorts roles by priority (ascending) — lower number = higher priority
+- Iterates through sorted roles and checks if any keyword matches the user message
+- First match wins and determines the role for that message
+- Falls back to oracle role if no keywords match
+
+### The 7 Built-in Roles
+
+| Role | Priority | Domain |
+|------|----------|--------|
+| phantom | 10 | Research, information gathering, web search |
+| astrology | 20 | Analysis, predictions, pattern recognition |
+| wizard | 30 | Coding, software development, architecture |
+| artist | 40 | Creative work, design, visual tasks |
+| scribe | 50 | Documentation, writing, note-taking |
+| explorer | 60 | System navigation, file exploration, discovery |
+| oracle | 100 | General fallback, complex reasoning, orchestration |
+
+### Configuring Custom Roles
+
+Add custom roles in `~/.blackcat/config.yaml` under the `roles:` section:
+
+```yaml
+roles:
+  - name: my-role
+    model: claude-3-5-sonnet
+    provider: anthropic
+    temperature: 0.7
+    system_prompt: "You are a specialized assistant for X..."
+    keywords:
+      - keyword1
+      - keyword2
+    allowed_tools:
+      - Bash
+      - Read
+    priority: 25
+```
+
+### RoleConfig Struct Fields
+
+- `name` (string): Unique identifier for the role
+- `model` (string): LLM model name (e.g., claude-3-5-sonnet, gpt-4o)
+- `provider` (string): LLM provider (openai, anthropic, gemini, etc.)
+- `temperature` (float64): Sampling temperature (0.0-1.0)
+- `system_prompt` (string): System prompt prepended to each message
+- `keywords` ([]string): Trigger words that route messages to this role
+- `allowed_tools` ([]string): Tool names this role can invoke (empty = all tools)
+- `priority` (int): Lower number = higher priority (default: 100)
+
+## RTK Integration (Phase 4)
+
+### What RTK Is
+- RTK (Rust Token Killer) is a token-saving wrapper for shell commands
+- Filters verbose command output, showing only the essential information
+- Reduces token usage by 60-90% on common development operations
+- Works with cargo, tsc, lint, prettier, next, vitest, playwright, pnpm, npm, npx, prisma, docker, kubectl, git, gh, and more
+
+### How wrapWithRTK Works
+- Intercepts Bash tool calls in the OpenCode agent
+- Wraps the command with RTK filtering logic
+- Returns condensed output grouped by file, error, or status
+- Preserves exit codes and error detection
+
+### Enabling RTK
+
+Set `rtk.enabled: true` in `~/.blackcat/config.yaml`:
+
+```yaml
+rtk:
+  enabled: true
+  commands:
+    - cargo
+    - tsc
+    - lint
+    - prettier
+    - next
+    - vitest
+    - playwright
+    - pnpm
+    - npm
+    - npx
+    - prisma
+    - docker
+    - kubectl
+    - git
+    - gh
+    - ls
+    - grep
+    - find
+```
+
+### RTKConfig Struct Fields
+
+- `enabled` (bool): Master switch for RTK integration (default: false)
+- `commands` ([]string): List of command prefixes to intercept and filter
+
+Default commands when enabled: cargo, tsc, lint, prettier, next, vitest, playwright, pnpm, npm, npx, prisma, docker, kubectl, git, gh, ls, grep, find

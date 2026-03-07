@@ -103,7 +103,7 @@ func TestWave4_Reflection_NilLLM_NoOp(t *testing.T) {
 // TestWave4_Supervisor_ClassifiesCoding verifies that ClassifyMessage correctly
 // classifies a coding-related message as TaskTypeCoding.
 func TestWave4_Supervisor_ClassifiesCoding(t *testing.T) {
-	got := ClassifyMessage("fix the bug in my code")
+	got := ClassifyMessage("fix the bug in my code", nil)
 	if got != TaskTypeCoding {
 		t.Fatalf("ClassifyMessage('fix the bug in my code') = %q, want %q", got, TaskTypeCoding)
 	}
@@ -112,7 +112,7 @@ func TestWave4_Supervisor_ClassifiesCoding(t *testing.T) {
 // TestWave4_Supervisor_ClassifiesAdmin verifies that ClassifyMessage correctly
 // classifies an admin-related message as TaskTypeAdmin.
 func TestWave4_Supervisor_ClassifiesAdmin(t *testing.T) {
-	got := ClassifyMessage("restart the service")
+	got := ClassifyMessage("restart the service", nil)
 	if got != TaskTypeAdmin {
 		t.Fatalf("ClassifyMessage('restart the service') = %q, want %q", got, TaskTypeAdmin)
 	}
@@ -590,7 +590,7 @@ func TestWave4_Supervisor_AllTaskTypes(t *testing.T) {
 		{"hello, how are you today?", TaskTypeGeneral},
 	}
 	for _, tt := range tests {
-		got := ClassifyMessage(tt.msg)
+		got := ClassifyMessage(tt.msg, nil)
 		if got != tt.want {
 			t.Errorf("ClassifyMessage(%q) = %q, want %q", tt.msg, got, tt.want)
 		}

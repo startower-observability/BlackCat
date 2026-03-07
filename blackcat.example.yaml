@@ -329,3 +329,234 @@ agent:
 
 # Google Workspace — requires: npm install -g @googleworkspace/cli (Node 18+)
 # (auth via: gws auth setup)
+
+# =============================================================================
+# Agent Roles (Phase 4)
+# =============================================================================
+# Roles allow you to create specialized agent personas with different
+# system prompts, models, and access to specific tools. Each role has keywords
+# that trigger automatic routing when matched in user messages.
+#
+# When no role keywords match, the message routes to the fallback role
+# (oracle) which has no keywords and serves as the catch-all.
+
+roles:
+  # Role 1: Phantom — DevOps and infrastructure tasks
+  - name: "phantom"
+    # Model override (empty = use default from llm.model)
+    model: ""
+    # Provider override (empty = use default from llm.provider)
+    provider: ""
+    # Temperature for this role (0.0 = deterministic, 2.0 = random)
+    temperature: 0.7
+    # Custom system prompt for this role (empty = use default)
+    systemPrompt: ""
+    # Keywords that trigger this role (case-insensitive matching)
+    keywords:
+      - "restart"
+      - "deploy"
+      - "server"
+      - "status"
+      - "docker"
+      - "systemctl"
+      - "health"
+      - "infra"
+      - "devops"
+      - "service"
+      - "nginx"
+      - "ssl"
+    # Tools this role is allowed to use (nil = all tools allowed)
+    allowedTools: []
+    # Priority for routing (lower = higher priority, phantom wins over wizard)
+    priority: 10
+
+  # Role 2: Astrology — Crypto and trading analysis
+  - name: "astrology"
+    model: ""
+    provider: ""
+    temperature: 0.7
+    systemPrompt: ""
+    keywords:
+      - "crypto"
+      - "bitcoin"
+      - "btc"
+      - "eth"
+      - "ethereum"
+      - "trading"
+      - "token"
+      - "defi"
+      - "nft"
+      - "wallet"
+      - "market"
+      - "portfolio"
+      - "investment"
+      - "stock"
+      - "forex"
+      - "chart"
+      - "candlestick"
+      - "pump"
+      - "whale"
+    allowedTools: []
+    priority: 20
+
+  # Role 3: Wizard — Coding and software development
+  - name: "wizard"
+    model: ""
+    provider: ""
+    temperature: 0.7
+    systemPrompt: ""
+    keywords:
+      - "code"
+      - "implement"
+      - "function"
+      - "bug"
+      - "fix"
+      - "test"
+      - "build"
+      - "compile"
+      - "git"
+      - "deploy"
+      - "opencode"
+      - "typescript"
+      - "golang"
+      - "python"
+      - "javascript"
+      - "refactor"
+      - "debug"
+      - "api"
+      - "endpoint"
+      - "database"
+      - "sql"
+      - "migration"
+    allowedTools: []
+    priority: 30
+
+  # Role 4: Artist — Social media content creation
+  - name: "artist"
+    model: ""
+    provider: ""
+    temperature: 0.7
+    systemPrompt: ""
+    keywords:
+      - "instagram"
+      - "tiktok"
+      - "twitter"
+      - "linkedin"
+      - "facebook"
+      - "threads"
+      - "post"
+      - "caption"
+      - "hashtag"
+      - "reel"
+      - "story"
+      - "content"
+      - "social"
+      - "viral"
+      - "engagement"
+      - "schedule"
+      - "publish"
+    allowedTools: []
+    priority: 40
+
+  # Role 5: Scribe — Writing and documentation tasks
+  - name: "scribe"
+    model: ""
+    provider: ""
+    temperature: 0.7
+    systemPrompt: ""
+    keywords:
+      - "write"
+      - "draft"
+      - "article"
+      - "blog"
+      - "email"
+      - "document"
+      - "copy"
+      - "copywriting"
+      - "proofread"
+      - "translate"
+      - "summarize"
+      - "report"
+      - "newsletter"
+      - "pitch"
+      - "proposal"
+    allowedTools: []
+    priority: 50
+
+  # Role 6: Explorer — Research and information gathering
+  - name: "explorer"
+    model: ""
+    provider: ""
+    temperature: 0.7
+    systemPrompt: ""
+    keywords:
+      - "search"
+      - "find"
+      - "look up"
+      - "what is"
+      - "explain"
+      - "research"
+      - "summarize"
+      - "web"
+      - "browse"
+      - "read"
+      - "compare"
+      - "analyze"
+      - "review"
+      - "investigate"
+    # Explorer role has restricted tool access for research tasks
+    allowedTools:
+      - "memory_search"
+      - "web_search"
+      - "archival_memory_search"
+      - "archival_memory_insert"
+      - "core_memory_get"
+    priority: 60
+
+  # Role 7: Oracle — Fallback/catch-all role (no keywords)
+  - name: "oracle"
+    model: ""
+    provider: ""
+    temperature: 0.7
+    systemPrompt: ""
+    # No keywords = fallback role when no other role matches
+    keywords: []
+    allowedTools: []
+    # Highest priority number = lowest priority (evaluated last)
+    priority: 100
+
+# =============================================================================
+# RTK (Rust Token Killer) Configuration
+# =============================================================================
+# RTK provides automatic token optimization for command output. When enabled,
+# BlackCat intercepts configured commands and applies smart filtering to reduce
+# token usage by 60-90% while preserving essential information.
+#
+# For example, running 'cargo test' normally produces verbose output.
+# With RTK enabled, BlackCat only shows test failures, saving tokens.
+
+rtk:
+  # Enable RTK token optimization (default: false)
+  enabled: false
+
+  # Commands to enable RTK filtering for. Uncomment to customize.
+  # If empty and enabled is true, all default commands are used.
+  # commands:
+  #   - "cargo"      # Rust build/test commands
+  #   - "tsc"        # TypeScript compiler
+  #   - "lint"       # ESLint, Biome, etc.
+  #   - "prettier"   # Code formatting checks
+  #   - "next"       # Next.js build
+  #   - "vitest"     # Vitest test runner
+  #   - "playwright" # Playwright e2e tests
+  #   - "pnpm"       # pnpm package manager
+  #   - "npm"        # npm package manager
+  #   - "npx"        # npx command runner
+  #   - "prisma"     # Prisma ORM
+  #   - "docker"     # Docker CLI
+  #   - "kubectl"    # Kubernetes CLI
+  #   - "git"        # Git commands
+  #   - "gh"         # GitHub CLI
+  #   - "ls"         # Directory listings
+  #   - "grep"       # File search
+  #   - "find"       # File find
