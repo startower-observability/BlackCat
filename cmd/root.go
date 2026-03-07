@@ -4,6 +4,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -44,9 +45,17 @@ func initConfig() {
 	} else {
 		home, err := os.UserHomeDir()
 		cobra.CheckErr(err)
-		viper.AddConfigPath(home)
-		viper.SetConfigType("yaml")
-		viper.SetConfigName(".blackcat")
+
+		// Primary default: ~/.blackcat/config.yaml
+		primary := filepath.Join(home, ".blackcat", "config.yaml")
+		if _, serr := os.Stat(primary); serr == nil {
+			viper.SetConfigFile(primary)
+		} else {
+			// Legacy fallback: ~/.blackcat.yaml
+			viper.AddConfigPath(home)
+			viper.SetConfigType("yaml")
+			viper.SetConfigName(".blackcat")
+		}
 	}
 	viper.SetEnvPrefix("BLACKCAT")
 	viper.AutomaticEnv()

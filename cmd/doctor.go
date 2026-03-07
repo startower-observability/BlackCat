@@ -287,6 +287,178 @@ var doctorCmd = &cobra.Command{
 			}
 		}
 
+		// ── Voice Transcription ──────────────────────────────────────
+		fmt.Println()
+		fmt.Println("--- Voice Transcription ---")
+
+		// Check 16: Whisper configuration.
+		if viper.GetBool("whisper.enabled") {
+			if os.Getenv("BLACKCAT_WHISPER_GROQAPIKEY") != "" {
+				printCheck(true, "Whisper enabled and Groq API key set")
+				passed++
+			} else {
+				printFail("Groq API key missing (set BLACKCAT_WHISPER_GROQAPIKEY)")
+				failed++
+			}
+		} else {
+			printWarn("Whisper disabled — voice transcription unavailable (set whisper.enabled: true + BLACKCAT_WHISPER_GROQAPIKEY to enable)")
+			warned++
+		}
+
+		// ── Social Media Skills ─────────────────────────────────────
+		fmt.Println()
+		fmt.Println("--- Social Media Skills ---")
+
+		// Check 17: Threads skill.
+		if os.Getenv("THREADS_ACCESS_TOKEN") != "" {
+			printCheck(true, "Threads: THREADS_ACCESS_TOKEN set")
+			passed++
+		} else {
+			printWarn("Threads: THREADS_ACCESS_TOKEN not set")
+			warned++
+		}
+
+		// Check 18: Twitter/X skill.
+		if _, err := exec.LookPath("bird"); err != nil {
+			printWarn("Twitter/X: bird CLI not found (npm install -g @steipete/bird)")
+			warned++
+		} else {
+			printCheck(true, "Twitter/X: bird CLI found")
+			passed++
+		}
+		if os.Getenv("TWITTER_AUTH_TOKEN") != "" {
+			printCheck(true, "Twitter/X: TWITTER_AUTH_TOKEN set")
+			passed++
+		} else {
+			printWarn("Twitter/X: TWITTER_AUTH_TOKEN not set")
+			warned++
+		}
+
+		// Check 19: LinkedIn skill.
+		if _, err := exec.LookPath("python3"); err != nil {
+			printWarn("LinkedIn: python3 not found")
+			warned++
+		} else {
+			printCheck(true, "LinkedIn: python3 found")
+			passed++
+		}
+		if os.Getenv("LINKEDIN_LI_AT") != "" {
+			printCheck(true, "LinkedIn: LINKEDIN_LI_AT set")
+			passed++
+		} else {
+			printWarn("LinkedIn: LINKEDIN_LI_AT not set")
+			warned++
+		}
+		if os.Getenv("LINKEDIN_JSESSIONID") != "" {
+			printCheck(true, "LinkedIn: LINKEDIN_JSESSIONID set")
+			passed++
+		} else {
+			printWarn("LinkedIn: LINKEDIN_JSESSIONID not set")
+			warned++
+		}
+
+		// Check 20: Facebook skill.
+		if os.Getenv("FACEBOOK_PAGE_TOKEN") != "" {
+			printCheck(true, "Facebook: FACEBOOK_PAGE_TOKEN set")
+			passed++
+		} else {
+			printWarn("Facebook: FACEBOOK_PAGE_TOKEN not set")
+			warned++
+		}
+
+		// Check 21: TikTok skill.
+		if os.Getenv("TIKTOK_ACCESS_TOKEN") != "" {
+			printCheck(true, "TikTok: TIKTOK_ACCESS_TOKEN set")
+			passed++
+		} else {
+			printWarn("TikTok: TIKTOK_ACCESS_TOKEN not set")
+			warned++
+		}
+
+		// Check 22: Google Workspace skill.
+		if _, err := exec.LookPath("gws"); err != nil {
+			printWarn("Google Workspace: gws CLI not found (npm install -g @googleworkspace/cli)")
+			warned++
+		} else {
+			printCheck(true, "Google Workspace: gws CLI found")
+			passed++
+		}
+
+		// ── Phase 2 Skills ──────────────────────────────────────────
+		fmt.Println()
+		fmt.Println("--- Phase 2 Skills ---")
+
+		// Check 23 + 24: Veo3 / nano-banana (Gemini-based generation skills).
+		uvFound := false
+		if _, err := exec.LookPath("uv"); err != nil {
+			printWarn("Veo3/nano-banana: uv not found (pip install uv)")
+			warned++
+		} else {
+			printCheck(true, "Veo3/nano-banana: uv found")
+			passed++
+			uvFound = true
+		}
+		_ = uvFound // informational — both skills silently skip when missing
+		if _, err := exec.LookPath("ffmpeg"); err != nil {
+			printWarn("Veo3: ffmpeg not found")
+			warned++
+		} else {
+			printCheck(true, "Veo3: ffmpeg found")
+			passed++
+		}
+		if os.Getenv("GEMINI_API_KEY") != "" {
+			printCheck(true, "Veo3/nano-banana: GEMINI_API_KEY set")
+			passed++
+		} else {
+			printWarn("Veo3/nano-banana: GEMINI_API_KEY not set")
+			warned++
+		}
+
+		// Check 25: document-processing.
+		if _, err := exec.LookPath("python3"); err != nil {
+			printWarn("document-processing: python3 not found")
+			warned++
+		} else {
+			printCheck(true, "document-processing: python3 found")
+			passed++
+		}
+
+		// Check 26: capability-evolver.
+		if _, err := exec.LookPath("node"); err != nil {
+			printWarn("capability-evolver: node not found")
+			warned++
+		} else {
+			printCheck(true, "capability-evolver: node found")
+			passed++
+		}
+
+		// Check 27: reddit-scraper.
+		if _, err := exec.LookPath("python3"); err != nil {
+			printWarn("reddit-scraper: python3 not found")
+			warned++
+		} else {
+			printCheck(true, "reddit-scraper: python3 found")
+			passed++
+		}
+
+		// Check 28: prompt-guard.
+		if _, err := exec.LookPath("python3"); err != nil {
+			printWarn("prompt-guard: python3 not found")
+			warned++
+		} else {
+			printCheck(true, "prompt-guard: python3 found")
+			passed++
+		}
+
+		// Check 29: marketplace-installer.
+		if _, err := exec.LookPath("npx"); err != nil {
+			printWarn("marketplace-installer: npx not found")
+			warned++
+		} else {
+			printCheck(true, "marketplace-installer: npx found")
+			passed++
+		}
+
 		// Summary.
 		fmt.Println()
 		fmt.Printf("  %d passed, %d warnings, %d failed\n", passed, warned, failed)
