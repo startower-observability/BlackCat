@@ -482,3 +482,174 @@ func TestValidateRTKDefaultCommands(t *testing.T) {
 		}
 	}
 }
+
+// --- Phase 5: Provider symmetry and override diagnostics ---
+
+func TestLoadWithOpenAIProviderEnvOverride(t *testing.T) {
+	// Create a YAML with providers.openai.model set
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "test.yaml")
+
+	yamlContent := `
+providers:
+  openai:
+    enabled: true
+    model: "gpt-4o"
+    apiKey: "sk-yaml-key"
+`
+	if err := os.WriteFile(configPath, []byte(yamlContent), 0o644); err != nil {
+		t.Fatalf("Failed to write test config file: %v", err)
+	}
+
+	// Set environment overrides
+	t.Setenv("BLACKCAT_PROVIDERS_OPENAI_MODEL", "gpt-5.2")
+	t.Setenv("BLACKCAT_PROVIDERS_OPENAI_ENABLED", "true")
+	t.Setenv("BLACKCAT_PROVIDERS_OPENAI_API_KEY", "sk-env-key")
+	t.Setenv("BLACKCAT_PROVIDERS_OPENAI_BASE_URL", "https://custom.openai.com/v1")
+
+	cfg, err := Load(configPath)
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+
+	// Environment variables should override YAML values
+	if cfg.Providers.OpenAI.Model != "gpt-5.2" {
+		t.Errorf("Providers.OpenAI.Model = %q, want %q (env override)", cfg.Providers.OpenAI.Model, "gpt-5.2")
+	}
+	if !cfg.Providers.OpenAI.Enabled {
+		t.Errorf("Providers.OpenAI.Enabled = %v, want true (env override)", cfg.Providers.OpenAI.Enabled)
+	}
+	if cfg.Providers.OpenAI.APIKey != "sk-env-key" {
+		t.Errorf("Providers.OpenAI.APIKey = %q, want %q (env override)", cfg.Providers.OpenAI.APIKey, "sk-env-key")
+	}
+	if cfg.Providers.OpenAI.BaseURL != "https://custom.openai.com/v1" {
+		t.Errorf("Providers.OpenAI.BaseURL = %q, want %q (env override)", cfg.Providers.OpenAI.BaseURL, "https://custom.openai.com/v1")
+	}
+}
+
+func TestAuthoritativeProviderFieldBeatsLegacyLLMModel(t *testing.T) {
+	// Create a YAML with both legacy llm.model and providers.openai.model
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "test.yaml")
+
+	yamlContent := `
+llm:
+  provider: "openai"
+  model: "gpt-4"
+providers:
+  openai:
+    enabled: true
+    model: "gpt-5.2"
+`
+	if err := os.WriteFile(configPath, []byte(yamlContent), 0o644); err != nil {
+		t.Fatalf("Failed to write test config file: %v", err)
+	}
+
+	cfg, err := Load(configPath)
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+
+	// The authoritative provider field should have its own value
+	if cfg.Providers.OpenAI.Model != "gpt-5.2" {
+		t.Errorf("Providers.OpenAI.Model = %q, want %q (authoritative)", cfg.Providers.OpenAI.Model, "gpt-5.2")
+	}
+	if !cfg.Providers.OpenAI.Enabled {
+		t.Errorf("Providers.OpenAI.Enabled = %v, want true", cfg.Providers.OpenAI.Enabled)
+	}
+
+	// Legacy fields should still be populated for backward compat
+	if cfg.LLM.Provider != "openai" {
+		t.Errorf("LLM.Provider = %q, want %q (legacy compat)", cfg.LLM.Provider, "openai")
+	}
+	if cfg.LLM.Model != "gpt-4" {
+		t.Errorf("LLM.Model = %q, want %q (legacy compat)", cfg.LLM.Model, "gpt-4")
+	}
+
+	// Env override on provider field should NOT affect legacy field
+	t.Setenv("BLACKCAT_PROVIDERS_OPENAI_MODEL", "gpt-5.1-codex")
+
+	cfg2, err := Load(configPath)
+	if err != nil {
+		t.Fatalf("Load (with env) failed: %v", err)
+	}
+
+	if cfg2.Providers.OpenAI.Model != "gpt-5.1-codex" {
+		t.Errorf("Providers.OpenAI.Model = %q, want %q (env override)", cfg2.Providers.OpenAI.Model, "gpt-5.1-codex")
+	}
+	// Legacy llm.model should still reflect the YAML value, not the env override
+	if cfg2.LLM.Model != "gpt-4" {
+		t.Errorf("LLM.Model = %q, want %q (legacy should not be affected by provider env)", cfg2.LLM.Model, "gpt-4")
+	}
+}
+
+func TestOverrideDiagnosticsDefault(t *testing.T) {
+	cfg := Defaults()
+
+	diag := GetFieldSourceDiagnostics(cfg, "llm.provider")
+	if diag.Source != "default" {
+		t.Errorf("Source = %q, want %q", diag.Source, "default")
+	}
+	if diag.EnvVar != "BLACKCAT_LLM_PROVIDER" {
+		t.Errorf("EnvVar = %q, want %q", diag.EnvVar, "BLACKCAT_LLM_PROVIDER")
+	}
+}
+
+func TestOverrideDiagnosticsYAML(t *testing.T) {
+	cfg := Defaults()
+	cfg.Providers.OpenAI.Model = "gpt-5.2"
+
+	diag := GetFieldSourceDiagnostics(cfg, "providers.openai.model")
+	if diag.Source != "yaml" {
+		t.Errorf("Source = %q, want %q", diag.Source, "yaml")
+	}
+	if diag.YAMLValue != "gpt-5.2" {
+		t.Errorf("YAMLValue = %q, want %q", diag.YAMLValue, "gpt-5.2")
+	}
+}
+
+func TestOverrideDiagnosticsEnv(t *testing.T) {
+	cfg := Defaults()
+	cfg.Providers.OpenAI.Model = "gpt-5.2"
+
+	t.Setenv("BLACKCAT_PROVIDERS_OPENAI_MODEL", "gpt-5.1-codex")
+
+	diag := GetFieldSourceDiagnostics(cfg, "providers.openai.model")
+	if diag.EnvValue != "gpt-5.1-codex" {
+		t.Errorf("EnvValue = %q, want %q", diag.EnvValue, "gpt-5.1-codex")
+	}
+	// Both YAML and env are set, and they differ, so env wins
+	if diag.Source != "mixed-env-wins" {
+		t.Errorf("Source = %q, want %q", diag.Source, "mixed-env-wins")
+	}
+}
+
+func TestOverrideDiagnosticsUnknownField(t *testing.T) {
+	cfg := Defaults()
+
+	diag := GetFieldSourceDiagnostics(cfg, "providers.unknown.model")
+	if diag.Field != "providers.unknown.model" {
+		t.Fatalf("Field = %q; want %q", diag.Field, "providers.unknown.model")
+	}
+	if diag.EnvVar != "" {
+		t.Fatalf("EnvVar = %q; want empty for unknown field", diag.EnvVar)
+	}
+	if diag.Source != "default" {
+		t.Fatalf("Source = %q; want %q", diag.Source, "default")
+	}
+}
+
+func TestOverrideDiagnosticsEnvSameAsYAML(t *testing.T) {
+	cfg := Defaults()
+	cfg.Providers.OpenAI.Model = "gpt-5.2"
+
+	t.Setenv("BLACKCAT_PROVIDERS_OPENAI_MODEL", "gpt-5.2")
+
+	diag := GetFieldSourceDiagnostics(cfg, "providers.openai.model")
+	if diag.Source != "env" {
+		t.Fatalf("Source = %q; want %q", diag.Source, "env")
+	}
+	if diag.EnvValue != "gpt-5.2" {
+		t.Fatalf("EnvValue = %q; want %q", diag.EnvValue, "gpt-5.2")
+	}
+}

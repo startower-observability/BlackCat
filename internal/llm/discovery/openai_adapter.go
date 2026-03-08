@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/startower-observability/blackcat/internal/agentapi"
+	"github.com/startower-observability/blackcat/internal/llm"
 )
 
 // OpenAIAdapter discovers models from the OpenAI /v1/models endpoint.
@@ -78,9 +79,11 @@ func (a *OpenAIAdapter) DiscoverModels(ctx context.Context) ([]agentapi.Provider
 
 	records := make([]agentapi.ProviderModelRecord, 0, len(modelsResp.Data))
 	for _, m := range modelsResp.Data {
+		ref := llm.CanonicalizeModelID(m.ID)
 		records = append(records, agentapi.ProviderModelRecord{
-			ID:   m.ID,
-			Name: m.ID, // OpenAI uses ID as display name
+			ID:          m.ID,
+			CanonicalID: ref.CanonicalID,
+			Name:        m.ID, // OpenAI uses ID as display name
 			Freshness: agentapi.FreshnessMetadata{
 				Source: agentapi.SourceLive,
 			},

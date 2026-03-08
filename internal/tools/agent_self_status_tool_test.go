@@ -58,7 +58,7 @@ func TestAgentSelfStatusToolCompact(t *testing.T) {
 		userID:      "user-1",
 	}
 
-	tool := NewAgentSelfStatusTool(provider)
+	tool := NewAgentSelfStatusTool(provider, nil)
 
 	// Verify tool metadata
 	if tool.Name() != "agent_self_status" {
@@ -130,7 +130,7 @@ func TestAgentSelfStatusToolFull(t *testing.T) {
 		userID:         "user-2",
 	}
 
-	tool := NewAgentSelfStatusTool(provider)
+	tool := NewAgentSelfStatusTool(provider, nil)
 
 	result, err := tool.Execute(ctx, json.RawMessage(`{"full":true}`))
 	if err != nil {
@@ -177,6 +177,50 @@ func TestAgentSelfStatusToolFull(t *testing.T) {
 	}
 }
 
+func TestAgentSelfStatusToolIncludesRuntimeModelState(t *testing.T) {
+	ctx := context.Background()
+
+	provider := &stubSelfKnowledgeProvider{
+		agentName:    "RuntimeCat",
+		modelName:    "legacy-model",
+		providerName: "legacy-provider",
+	}
+
+	holder := agentapi.NewRuntimeModelHolder()
+	holder.Set(agentapi.RuntimeModelStatus{
+		ConfiguredModel: agentapi.RuntimeModelRef{CanonicalID: "anthropic/claude-opus-4-6"},
+		AppliedModel:    agentapi.RuntimeModelRef{CanonicalID: "anthropic/claude-opus-4-6"},
+		BackendProvider: "zen",
+		ReloadCount:     2,
+	})
+
+	tool := NewAgentSelfStatusTool(provider, holder)
+
+	result, err := tool.Execute(ctx, json.RawMessage(`{}`))
+	if err != nil {
+		t.Fatalf("Execute() error: %v", err)
+	}
+
+	if !strings.Contains(result, "--- Model State ---") {
+		t.Fatalf("output should include model state section, got:\n%s", result)
+	}
+	if !strings.Contains(result, "Configured: anthropic/claude-opus-4-6") {
+		t.Errorf("configured canonical ID missing, got:\n%s", result)
+	}
+	if !strings.Contains(result, "Applied: anthropic/claude-opus-4-6") {
+		t.Errorf("applied canonical ID missing, got:\n%s", result)
+	}
+	if !strings.Contains(result, "Backend: zen") {
+		t.Errorf("backend provider missing, got:\n%s", result)
+	}
+	if !strings.Contains(result, "Reload Count: 2") {
+		t.Errorf("reload count missing, got:\n%s", result)
+	}
+	if !strings.Contains(result, "Last Reload Error: (none)") {
+		t.Errorf("last reload error fallback missing, got:\n%s", result)
+	}
+}
+
 func TestAgentSelfStatusPhase5(t *testing.T) {
 	ctx := context.Background()
 
@@ -214,7 +258,7 @@ func TestAgentSelfStatusPhase5(t *testing.T) {
 		// SchedulerSubsystem is nil — scheduler will appear disabled
 	}
 
-	tool := NewAgentSelfStatusTool(provider, extras)
+	tool := NewAgentSelfStatusTool(provider, nil, extras)
 
 	// Verify backward-compatible tool name
 	if tool.Name() != "agent_self_status" {
@@ -284,7 +328,7 @@ func TestAgentSelfStatusNilExtrasBackwardCompat(t *testing.T) {
 	}
 
 	// No extras — backward compatible call
-	tool := NewAgentSelfStatusTool(provider)
+	tool := NewAgentSelfStatusTool(provider, nil)
 
 	result, err := tool.Execute(ctx, json.RawMessage(`{}`))
 	if err != nil {

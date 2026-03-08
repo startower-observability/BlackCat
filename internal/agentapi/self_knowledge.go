@@ -58,10 +58,11 @@ type SelfKnowledgeSnapshot struct {
 	CacheUsage    string `json:"cache_usage"`     // always "unavailable"
 
 	// Phase 5 extensions
-	Roles              []RoleView     `json:"roles,omitempty"`
-	SchedulerEnabled   bool           `json:"scheduler_enabled"`
-	SchedulerTaskCount int            `json:"scheduler_task_count,omitempty"`
-	ProviderCatalog    []CatalogEntry `json:"provider_catalog,omitempty"`
+	Roles              []RoleView         `json:"roles,omitempty"`
+	SchedulerEnabled   bool               `json:"scheduler_enabled"`
+	SchedulerTaskCount int                `json:"scheduler_task_count,omitempty"`
+	ProviderCatalog    []CatalogEntry     `json:"provider_catalog,omitempty"`
+	RuntimeModelStatus RuntimeModelStatus `json:"runtime_model_status"`
 
 	// Mode
 	FullMode bool `json:"full_mode"`
@@ -89,7 +90,7 @@ type SelfKnowledgeExtras struct {
 // BuildSelfKnowledgeSnapshot constructs a snapshot from the given provider.
 // If fullMode is true, inactive skill details are populated.
 // extras may be nil; when non-nil its fields enrich the Phase 5 snapshot sections.
-func BuildSelfKnowledgeSnapshot(ctx context.Context, p SelfKnowledgeProvider, fullMode bool, extras *SelfKnowledgeExtras) SelfKnowledgeSnapshot {
+func BuildSelfKnowledgeSnapshot(ctx context.Context, p SelfKnowledgeProvider, fullMode bool, extras *SelfKnowledgeExtras, runtimeModelHolder *RuntimeModelHolder) SelfKnowledgeSnapshot {
 	snap := SelfKnowledgeSnapshot{
 		Version:   version.Version,
 		Commit:    version.Commit,
@@ -135,6 +136,11 @@ func BuildSelfKnowledgeSnapshot(ctx context.Context, p SelfKnowledgeProvider, fu
 
 	// CacheUsage always unavailable
 	snap.UnavailableFields = append(snap.UnavailableFields, "CacheUsage")
+
+	// Runtime model status (single source of truth when holder is available)
+	if runtimeModelHolder != nil {
+		snap.RuntimeModelStatus = runtimeModelHolder.Get()
+	}
 
 	// Phase 5 enrichment from extras
 	if extras != nil {

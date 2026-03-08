@@ -531,7 +531,7 @@ func (l *Loop) buildSystemPrompt(ctx context.Context) (string, error) {
 	var runtime strings.Builder
 	runtime.WriteString("# Runtime Context\n")
 	runtime.WriteString(fmt.Sprintf("Current time: %s\n", time.Now().Format("2006-01-02 15:04:05 MST")))
-	snap := BuildSelfKnowledgeSnapshot(ctx, l, false, l.selfKnowledgeExtras)
+	snap := BuildSelfKnowledgeSnapshot(ctx, l, false, l.selfKnowledgeExtras, nil)
 	runtime.WriteString(snap.CompactSummary())
 	if len(defs) > 0 {
 		runtime.WriteString(fmt.Sprintf("\nAvailable tools: %d\n", len(defs)))

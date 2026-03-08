@@ -56,7 +56,7 @@ func TestSelfKnowledgeSnapshotCompact(t *testing.T) {
 		userID:      "user-1",
 	}
 
-	snap := BuildSelfKnowledgeSnapshot(ctx, provider, false, nil)
+	snap := BuildSelfKnowledgeSnapshot(ctx, provider, false, nil, nil)
 
 	// FullMode must be false
 	if snap.FullMode {
@@ -157,7 +157,7 @@ func TestSelfKnowledgeSnapshotFull(t *testing.T) {
 		userID:         "user-2",
 	}
 
-	snap := BuildSelfKnowledgeSnapshot(ctx, provider, true, nil)
+	snap := BuildSelfKnowledgeSnapshot(ctx, provider, true, nil, nil)
 
 	// FullMode must be true
 	if !snap.FullMode {

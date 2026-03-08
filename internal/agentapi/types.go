@@ -22,6 +22,7 @@ type FreshnessMetadata struct {
 // ProviderModelRecord is the internal-rich representation of a model (may hold sensitive metadata)
 type ProviderModelRecord struct {
 	ID            string            `json:"id"`
+	CanonicalID   string            `yaml:"canonical_id"`
 	Name          string            `json:"name"`
 	Aliases       []string          `json:"aliases,omitempty"`
 	ContextWindow int               `json:"context_window,omitempty"`

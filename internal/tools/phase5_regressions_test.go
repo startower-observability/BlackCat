@@ -52,7 +52,7 @@ func TestRegressionInactiveSkillsAreNotMissingFromToolOutput(t *testing.T) {
 		SkillInventory: inventory,
 	}
 
-	tool := NewAgentSelfStatusTool(provider, extras)
+	tool := NewAgentSelfStatusTool(provider, nil, extras)
 	result, err := tool.Execute(ctx, json.RawMessage(`{}`))
 	if err != nil {
 		t.Fatalf("Execute failed: %v", err)
@@ -90,7 +90,7 @@ func TestRegressionInactiveSkillsSummaryNilExtrasBackwardCompat(t *testing.T) {
 	}
 
 	// nil extras → legacy path
-	tool := NewAgentSelfStatusTool(provider)
+	tool := NewAgentSelfStatusTool(provider, nil)
 	result, err := tool.Execute(ctx, json.RawMessage(`{"full":true}`))
 	if err != nil {
 		t.Fatalf("Execute failed: %v", err)
@@ -129,7 +129,7 @@ func TestRegressionRolesAreFullyPopulatedInToolOutput(t *testing.T) {
 		},
 	}
 
-	tool := NewAgentSelfStatusTool(provider, extras)
+	tool := NewAgentSelfStatusTool(provider, nil, extras)
 	result, err := tool.Execute(ctx, json.RawMessage(`{}`))
 	if err != nil {
 		t.Fatalf("Execute failed: %v", err)

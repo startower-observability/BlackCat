@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/startower-observability/blackcat/internal/agentapi"
+	"github.com/startower-observability/blackcat/internal/llm"
 )
 
 // StaticAdapter is a ProviderDiscoveryAdapter that returns a fixed list of models.
@@ -27,6 +28,8 @@ func (a *StaticAdapter) DiscoverModels(_ context.Context) ([]agentapi.ProviderMo
 	result := make([]agentapi.ProviderModelRecord, len(a.models))
 	copy(result, a.models)
 	for i := range result {
+		ref := llm.CanonicalizeModelID(result[i].ID)
+		result[i].CanonicalID = ref.CanonicalID
 		result[i].Freshness = agentapi.FreshnessMetadata{
 			Source: agentapi.SourceStatic,
 		}

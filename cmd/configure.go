@@ -202,11 +202,11 @@ func configureCopilotAuth(cmd *cobra.Command, provider *providerOption) error {
 	}
 
 	deviceCfg := oauth.DeviceFlowConfig{
-		ClientID:        clientID,
-		Scopes:          []string{"read:user"},
-		DeviceCodeURL:   "https://github.com/login/device/code",
-		TokenURL:        "https://github.com/login/oauth/access_token",
-		PollInterval:    5 * time.Second,
+		ClientID:      clientID,
+		Scopes:        []string{"read:user"},
+		DeviceCodeURL: "https://github.com/login/device/code",
+		TokenURL:      "https://github.com/login/oauth/access_token",
+		PollInterval:  5 * time.Second,
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
@@ -447,6 +447,12 @@ func saveProviderYAML(name, endpoint, model string) error {
 	// Update config based on provider
 	switch strings.ToLower(name) {
 	case "openai":
+		// Authoritative path: providers.openai.*
+		cfg.Providers.OpenAI.Enabled = true
+		if model != "" {
+			cfg.Providers.OpenAI.Model = model
+		}
+		// LEGACY: backward-compat writes for llm.provider / llm.model
 		cfg.LLM.Provider = "openai"
 		if model != "" {
 			cfg.LLM.Model = model

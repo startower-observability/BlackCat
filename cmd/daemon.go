@@ -408,10 +408,29 @@ func runDaemon(cmd *cobra.Command, args []string) error {
 		Planner:          agent.NewPlanner(agentLLM),
 		DaemonStartedAt:  daemonStartedAt,
 	}
+	runtimeModelHolder := agentapi.NewRuntimeModelHolder()
+	configuredModelRef := llm.CanonicalizeModelID(baseLoopCfg.ModelName)
+	runtimeModelRef := agentapi.RuntimeModelRef{
+		CanonicalID:     configuredModelRef.CanonicalID,
+		Vendor:          configuredModelRef.Vendor,
+		RawModel:        configuredModelRef.RawModel,
+		DisplayName:     configuredModelRef.DisplayName,
+		BackendProvider: configuredModelRef.BackendProvider,
+		SourceProvider:  configuredModelRef.SourceProvider,
+	}
+	runtimeModelHolder.Set(agentapi.RuntimeModelStatus{
+		ConfiguredModel: runtimeModelRef,
+		AppliedModel:    runtimeModelRef,
+		BackendProvider: baseLoopCfg.ProviderName,
+	})
+	// T6 wires this holder into config-reload backend swaps.
+	_ = runtimeModelHolder
 	// Register agent_self_status tool with a static adapter over baseLoopCfg.
 	// The Loop is created per-request, but the tool registry is shared; this
 	// adapter exposes the static config fields that don't change per-request.
-	registry.Register(tools.NewAgentSelfStatusTool(&loopConfigProvider{cfg: &baseLoopCfg}))
+	registry.Register(tools.NewAgentSelfStatusTool(&loopConfigProvider{cfg: &baseLoopCfg, holder: runtimeModelHolder}, runtimeModelHolder))
+	registry.Register(tools.NewSelfRestartTool())
+	registry.Register(tools.NewModelSwitchTool(cfg))
 
 	// Build role-specific LLM backends from config.
 	roleBackends := make(map[agent.RoleType]types.LLMClient, len(cfg.Roles))
@@ -511,7 +530,7 @@ func runDaemon(cmd *cobra.Command, args []string) error {
 
 	// Phase 5: Re-register agent_self_status with real extras (overwrites line 414).
 	// Registry.Register silently overwrites by tool name — this is intentional.
-	registry.Register(tools.NewAgentSelfStatusTool(&loopConfigProvider{cfg: &baseLoopCfg}, p5extras))
+	registry.Register(tools.NewAgentSelfStatusTool(&loopConfigProvider{cfg: &baseLoopCfg, holder: runtimeModelHolder}, runtimeModelHolder, p5extras))
 	// Phase 5: Register provider_catalog tool for live model catalog queries.
 	registry.Register(tools.NewProviderCatalogTool(catalogCache))
 
@@ -630,8 +649,20 @@ func runDaemon(cmd *cobra.Command, args []string) error {
 			slog.Info("config changed", "logging_level", newCfg.Logging.Level)
 			if newBackend, name := createActiveBackend(newCfg); newBackend != nil {
 				atomicBackend.Store(&llm.BackendHolder{Backend: newBackend})
+				newModelRef := runtimeModelRefFromProviderConfig(newCfg, name)
+				currentStatus := runtimeModelHolder.Get()
+				runtimeModelHolder.Set(agentapi.RuntimeModelStatus{
+					ConfiguredModel: newModelRef,
+					AppliedModel:    newModelRef,
+					BackendProvider: name,
+					ReloadCount:     currentStatus.ReloadCount + 1,
+				})
 				slog.Info("backend hot-swapped", "provider", name)
+				return
 			}
+			reloadErr := fmt.Errorf("backend hot-swap failed: no active backend from reloaded config")
+			runtimeModelHolder.SetReloadError(reloadErr.Error())
+			slog.Warn("backend hot-swap failed", "err", reloadErr)
 		})
 		if err != nil {
 			slog.Warn("config watcher disabled", "err", err)
@@ -1487,14 +1518,60 @@ func (b *busReconnector) UnhealthyReconnectable() []scheduler.ReconnectableChann
 // loopConfigProvider wraps agent.LoopConfig to satisfy agentapi.SelfKnowledgeProvider
 // at daemon startup, before any per-request Loop is created. It exposes static
 // config fields; per-request fields (ChannelType, UserID) return empty/default values.
-type loopConfigProvider struct{ cfg *agent.LoopConfig }
+type loopConfigProvider struct {
+	cfg    *agent.LoopConfig
+	holder *agentapi.RuntimeModelHolder
+}
 
-func (p *loopConfigProvider) GetAgentName() string                       { return p.cfg.AgentName }
-func (p *loopConfigProvider) GetModelName() string                       { return p.cfg.ModelName }
-func (p *loopConfigProvider) GetProviderName() string                    { return p.cfg.ProviderName }
+func (p *loopConfigProvider) GetAgentName() string { return p.cfg.AgentName }
+
+func (p *loopConfigProvider) GetModelName() string {
+	if p.holder != nil {
+		if model := p.holder.Get().AppliedModel.RawModel; model != "" {
+			return model
+		}
+	}
+	return p.cfg.ModelName
+}
+
+func (p *loopConfigProvider) GetProviderName() string {
+	if p.holder != nil {
+		if provider := p.holder.Get().BackendProvider; provider != "" {
+			return provider
+		}
+	}
+	return p.cfg.ProviderName
+}
+
 func (p *loopConfigProvider) GetChannelType() string                     { return p.cfg.ChannelType }
 func (p *loopConfigProvider) GetDaemonStartedAt() time.Time              { return p.cfg.DaemonStartedAt }
 func (p *loopConfigProvider) GetActiveSkills() []skills.Skill            { return p.cfg.Skills }
 func (p *loopConfigProvider) GetInactiveSkills() []skills.InactiveSkill  { return nil }
 func (p *loopConfigProvider) GetCostTracker() *observability.CostTracker { return p.cfg.CostTracker }
 func (p *loopConfigProvider) GetUserID() string                          { return p.cfg.UserID }
+
+func runtimeModelRefFromProviderConfig(cfg *config.Config, providerName string) agentapi.RuntimeModelRef {
+	modelName := cfg.LLM.Model
+	switch providerName {
+	case "openai":
+		modelName = cfg.Providers.OpenAI.Model
+	case "copilot":
+		modelName = cfg.Providers.Copilot.Model
+	case "antigravity":
+		modelName = cfg.Providers.Antigravity.Model
+	case "gemini":
+		modelName = cfg.Providers.Gemini.Model
+	case "zen":
+		modelName = cfg.Providers.Zen.Model
+	}
+
+	canonical := llm.CanonicalizeModelID(modelName)
+	return agentapi.RuntimeModelRef{
+		CanonicalID:     canonical.CanonicalID,
+		Vendor:          canonical.Vendor,
+		RawModel:        canonical.RawModel,
+		DisplayName:     canonical.DisplayName,
+		BackendProvider: providerName,
+		SourceProvider:  canonical.SourceProvider,
+	}
+}

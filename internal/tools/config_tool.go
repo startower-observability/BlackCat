@@ -8,6 +8,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/goccy/go-yaml"
 	"github.com/goccy/go-yaml/parser"
@@ -25,7 +26,7 @@ var configUpdateToolParameters = json.RawMessage(`{
 	"properties": {
 		"field": {
 			"type": "string",
-			"description": "YAML field path in dot notation, e.g. 'llm.model' or 'agent.name'"
+			"description": "YAML field path in dot notation, e.g. 'agent.name' or 'providers.openai.model'. LEGACY: 'llm.model' should not be used for model switching; use model_switch tool instead. For direct edits, use providers.{backend}.model."
 		},
 		"value": {
 			"type": "string",
@@ -40,9 +41,15 @@ type ConfigUpdateTool struct {
 	configPath string // absolute path to blackcat.yaml
 }
 
+var (
+	defaultConfigPathMu sync.RWMutex
+	defaultConfigPath   string
+)
+
 var _ types.Tool = (*ConfigUpdateTool)(nil)
 
 func NewConfigUpdateTool(configPath string) *ConfigUpdateTool {
+	setDefaultConfigPath(configPath)
 	return &ConfigUpdateTool{configPath: configPath}
 }
 
@@ -71,7 +78,27 @@ func (t *ConfigUpdateTool) Execute(_ context.Context, args json.RawMessage) (str
 		return "", fmt.Errorf("config_update: %s", config.ProtectedReason(field))
 	}
 
-	content, err := os.ReadFile(t.configPath)
+	return updateConfigField(t.configPath, field, params.Value)
+}
+
+func setDefaultConfigPath(configPath string) {
+	defaultConfigPathMu.Lock()
+	defer defaultConfigPathMu.Unlock()
+	defaultConfigPath = strings.TrimSpace(configPath)
+}
+
+func getDefaultConfigPath() string {
+	defaultConfigPathMu.RLock()
+	defer defaultConfigPathMu.RUnlock()
+	return defaultConfigPath
+}
+
+func updateConfigField(configPath, field, value string) (string, error) {
+	if strings.TrimSpace(configPath) == "" {
+		return "", fmt.Errorf("config_update: config path is required")
+	}
+
+	content, err := os.ReadFile(configPath)
 	if err != nil {
 		return "", fmt.Errorf("config_update: read config: %w", err)
 	}
@@ -86,7 +113,7 @@ func (t *ConfigUpdateTool) Execute(_ context.Context, args json.RawMessage) (str
 		return "", fmt.Errorf("config_update: invalid field path: %w", err)
 	}
 
-	replacementValue := coerceStringValue(params.Value)
+	replacementValue := coerceStringValue(value)
 	replacementYAML, err := yaml.Marshal(replacementValue)
 	if err != nil {
 		return "", fmt.Errorf("config_update: marshal value: %w", err)
@@ -97,15 +124,15 @@ func (t *ConfigUpdateTool) Execute(_ context.Context, args json.RawMessage) (str
 	}
 
 	mode := os.FileMode(0o644)
-	if info, statErr := os.Stat(t.configPath); statErr == nil {
+	if info, statErr := os.Stat(configPath); statErr == nil {
 		mode = info.Mode()
 	}
 
-	if err := os.WriteFile(t.configPath, []byte(astFile.String()), mode); err != nil {
+	if err := os.WriteFile(configPath, []byte(astFile.String()), mode); err != nil {
 		return "", fmt.Errorf("config_update: write config: %w", err)
 	}
 
-	return fmt.Sprintf("Config updated: %s = %s", field, params.Value), nil
+	return fmt.Sprintf("Config updated: %s = %s", field, value), nil
 }
 
 func coerceStringValue(raw string) interface{} {
