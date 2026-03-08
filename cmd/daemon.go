@@ -477,12 +477,24 @@ func runDaemon(cmd *cobra.Command, args []string) error {
 	// Phase 5: Build provider catalog cache and register live adapters.
 	// TTL 30 min — balances freshness vs. API call frequency.
 	catalogCache := llm.NewProviderCatalogCache(30 * time.Minute)
+
+	// Try to read the Copilot OAuth token from vault at init time so the
+	// provider_catalog tool can list GitHub Copilot/Models models.
+	// Silently skip if vault is locked or passphrase not set.
+	var copilotTokenForCatalog string
+	if cfg.Providers.Copilot.Enabled {
+		if tok, err := vaultTokenSource("oauth.copilot")(); err == nil {
+			copilotTokenForCatalog = tok
+		} else {
+			slog.Debug("phase5: copilot catalog adapter skipped", "reason", err)
+		}
+	}
+
 	discovery.RegisterDefaultAdapters(catalogCache, discovery.AdapterConfig{
-		OpenAIKey:     cfg.Providers.OpenAI.APIKey,
-		OpenAIBaseURL: cfg.Providers.OpenAI.BaseURL,
-		GeminiKey:     cfg.Providers.Gemini.APIKey,
-		// Copilot OAuth token is vault-based, not available at daemon init.
-		// Passing empty string causes the adapter to be skipped gracefully.
+		OpenAIKey:         cfg.Providers.OpenAI.APIKey,
+		OpenAIBaseURL:     cfg.Providers.OpenAI.BaseURL,
+		GeminiKey:         cfg.Providers.Gemini.APIKey,
+		CopilotOAuthToken: copilotTokenForCatalog,
 	})
 
 	// Phase 5: Build role registry from config for self-knowledge surfaces.
