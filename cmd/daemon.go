@@ -493,6 +493,9 @@ func runDaemon(cmd *cobra.Command, args []string) error {
 		Roles:              roleRegistry.Views(),
 		SchedulerSubsystem: schedulerSubsystem,
 	}
+	// Propagate extras into baseLoopCfg so all daemon-created loops carry them
+	// through NewLoop → l.selfKnowledgeExtras → buildSystemPrompt snapshot.
+	baseLoopCfg.SelfKnowledgeExtras = p5extras
 
 	// Phase 5: Re-register agent_self_status with real extras (overwrites line 414).
 	// Registry.Register silently overwrites by tool name — this is intentional.
