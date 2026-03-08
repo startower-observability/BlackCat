@@ -18,6 +18,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/startower-observability/blackcat/internal/agent"
+	"github.com/startower-observability/blackcat/internal/agentapi"
 	"github.com/startower-observability/blackcat/internal/channel"
 	"github.com/startower-observability/blackcat/internal/channel/discord"
 	"github.com/startower-observability/blackcat/internal/channel/telegram"
@@ -31,6 +32,7 @@ import (
 	"github.com/startower-observability/blackcat/internal/llm"
 	"github.com/startower-observability/blackcat/internal/llm/antigravity"
 	"github.com/startower-observability/blackcat/internal/llm/copilot"
+	"github.com/startower-observability/blackcat/internal/llm/discovery"
 	"github.com/startower-observability/blackcat/internal/llm/gemini"
 	"github.com/startower-observability/blackcat/internal/llm/zen"
 	"github.com/startower-observability/blackcat/internal/mcp"
@@ -471,6 +473,33 @@ func runDaemon(cmd *cobra.Command, args []string) error {
 	schedulerSubsystem.WithExecutor(&scheduler.ChannelExecutor{Sender: bus, Shell: &scheduler.ShellExecutor{}})
 	schedulerSubsystem.WithReconnector(&busReconnector{bus: bus})
 	daemonRegistry.Register(schedulerSubsystem)
+
+	// Phase 5: Build provider catalog cache and register live adapters.
+	// TTL 30 min — balances freshness vs. API call frequency.
+	catalogCache := llm.NewProviderCatalogCache(30 * time.Minute)
+	discovery.RegisterDefaultAdapters(catalogCache, discovery.AdapterConfig{
+		OpenAIKey:     cfg.Providers.OpenAI.APIKey,
+		OpenAIBaseURL: cfg.Providers.OpenAI.BaseURL,
+		GeminiKey:     cfg.Providers.Gemini.APIKey,
+		// Copilot OAuth token is vault-based, not available at daemon init.
+		// Passing empty string causes the adapter to be skipped gracefully.
+	})
+
+	// Phase 5: Build role registry from config for self-knowledge surfaces.
+	roleRegistry := agent.NewRoleRegistry(cfg.Roles)
+
+	// Phase 5: Assemble SelfKnowledgeExtras with runtime data.
+	p5extras := &agentapi.SelfKnowledgeExtras{
+		Roles:              roleRegistry.Views(),
+		SchedulerSubsystem: schedulerSubsystem,
+	}
+
+	// Phase 5: Re-register agent_self_status with real extras (overwrites line 414).
+	// Registry.Register silently overwrites by tool name — this is intentional.
+	registry.Register(tools.NewAgentSelfStatusTool(&loopConfigProvider{cfg: &baseLoopCfg}, p5extras))
+	// Phase 5: Register provider_catalog tool for live model catalog queries.
+	registry.Register(tools.NewProviderCatalogTool(catalogCache))
+
 	dashboardSubsystem := dashboard.NewServer(cfg.Dashboard, dashboard.DashboardDeps{
 		SubsystemManager: daemonRegistry,
 		TaskLister:       dashboardConfigTaskLister{jobs: cfg.Scheduler.Jobs},
