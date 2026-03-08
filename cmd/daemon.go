@@ -408,6 +408,23 @@ func runDaemon(cmd *cobra.Command, args []string) error {
 		Planner:          agent.NewPlanner(agentLLM),
 		DaemonStartedAt:  daemonStartedAt,
 	}
+	runtimeModelHolder := agentapi.NewRuntimeModelHolder()
+	configuredModelRef := llm.CanonicalizeModelID(baseLoopCfg.ModelName)
+	runtimeModelRef := agentapi.RuntimeModelRef{
+		CanonicalID:     configuredModelRef.CanonicalID,
+		Vendor:          configuredModelRef.Vendor,
+		RawModel:        configuredModelRef.RawModel,
+		DisplayName:     configuredModelRef.DisplayName,
+		BackendProvider: configuredModelRef.BackendProvider,
+		SourceProvider:  configuredModelRef.SourceProvider,
+	}
+	runtimeModelHolder.Set(agentapi.RuntimeModelStatus{
+		ConfiguredModel: runtimeModelRef,
+		AppliedModel:    runtimeModelRef,
+		BackendProvider: baseLoopCfg.ProviderName,
+	})
+	// T6 wires this holder into config-reload backend swaps.
+	_ = runtimeModelHolder
 	// Register agent_self_status tool with a static adapter over baseLoopCfg.
 	// The Loop is created per-request, but the tool registry is shared; this
 	// adapter exposes the static config fields that don't change per-request.
