@@ -206,6 +206,18 @@ func mergeEnvOverrides(cfg, envCfg *Config) {
 	}
 
 	// Providers
+	if envCfg.Providers.OpenAI.Enabled {
+		cfg.Providers.OpenAI.Enabled = true
+	}
+	if envCfg.Providers.OpenAI.Model != "" {
+		cfg.Providers.OpenAI.Model = envCfg.Providers.OpenAI.Model
+	}
+	if envCfg.Providers.OpenAI.APIKey != "" {
+		cfg.Providers.OpenAI.APIKey = envCfg.Providers.OpenAI.APIKey
+	}
+	if envCfg.Providers.OpenAI.BaseURL != "" {
+		cfg.Providers.OpenAI.BaseURL = envCfg.Providers.OpenAI.BaseURL
+	}
 	if envCfg.Providers.Copilot.Enabled {
 		cfg.Providers.Copilot.Enabled = true
 	}
@@ -291,6 +303,10 @@ func bindEnvVars(v *viper.Viper) {
 	v.BindEnv("zen.baseURL", "BLACKCAT_ZEN_BASEURL")
 
 	// Providers
+	v.BindEnv("providers.openai.enabled", "BLACKCAT_PROVIDERS_OPENAI_ENABLED")
+	v.BindEnv("providers.openai.model", "BLACKCAT_PROVIDERS_OPENAI_MODEL")
+	v.BindEnv("providers.openai.apiKey", "BLACKCAT_PROVIDERS_OPENAI_API_KEY")
+	v.BindEnv("providers.openai.baseURL", "BLACKCAT_PROVIDERS_OPENAI_BASE_URL")
 	v.BindEnv("providers.copilot.enabled", "BLACKCAT_PROVIDERS_COPILOT_ENABLED")
 	v.BindEnv("providers.copilot.model", "BLACKCAT_PROVIDERS_COPILOT_MODEL")
 	v.BindEnv("providers.antigravity.enabled", "BLACKCAT_PROVIDERS_ANTIGRAVITY_ENABLED")
@@ -314,7 +330,7 @@ func Defaults() *Config {
 		},
 		OpenCode: OpenCodeConfig{
 			Addr:    "http://127.0.0.1:4096",
-		Timeout: Duration{30 * time.Minute},
+			Timeout: Duration{30 * time.Minute},
 		},
 		LLM: LLMConfig{
 			Temperature: 0.7,
@@ -348,8 +364,8 @@ func Defaults() *Config {
 				ClientID: "01ab8ac9400c4e429b23", // VS Code client ID
 			},
 			Antigravity: AntigravityOAuthConfig{
-			ClientID:     "", // Set via BLACKCAT_OAUTH_ANTIGRAVITY_CLIENTID
-			ClientSecret: "", // Set via BLACKCAT_OAUTH_ANTIGRAVITY_CLIENTSECRET
+				ClientID:     "", // Set via BLACKCAT_OAUTH_ANTIGRAVITY_CLIENTID
+				ClientSecret: "", // Set via BLACKCAT_OAUTH_ANTIGRAVITY_CLIENTSECRET
 			},
 		},
 		Zen: ZenConfig{

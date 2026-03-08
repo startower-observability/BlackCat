@@ -47,8 +47,8 @@ type OpenCodeConfig struct {
 
 // LLMConfig holds LLM provider settings.
 type LLMConfig struct {
-	Provider         string   `yaml:"provider"`         // e.g., "openai", "claude", "ollama"
-	Model            string   `yaml:"model"`            // e.g., "gpt-4", "claude-3-opus"
+	Provider         string   `yaml:"provider"`         // LEGACY: read-only compatibility, use providers.*.model for new code
+	Model            string   `yaml:"model"`            // LEGACY: read-only compatibility, use providers.*.model for new code
 	APIKey           string   `yaml:"apiKey"`           // Set via env or vault
 	BaseURL          string   `yaml:"baseURL"`          // Optional: custom base URL
 	Temperature      float64  `yaml:"temperature"`      // 0.0 to 2.0
