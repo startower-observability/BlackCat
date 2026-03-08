@@ -412,6 +412,7 @@ func runDaemon(cmd *cobra.Command, args []string) error {
 	// The Loop is created per-request, but the tool registry is shared; this
 	// adapter exposes the static config fields that don't change per-request.
 	registry.Register(tools.NewAgentSelfStatusTool(&loopConfigProvider{cfg: &baseLoopCfg}))
+	registry.Register(tools.NewSelfRestartTool())
 
 	// Build role-specific LLM backends from config.
 	roleBackends := make(map[agent.RoleType]types.LLMClient, len(cfg.Roles))
