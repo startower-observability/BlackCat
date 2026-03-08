@@ -3,9 +3,11 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/startower-observability/blackcat/internal/agentapi"
 	"github.com/startower-observability/blackcat/internal/observability"
 	"github.com/startower-observability/blackcat/internal/skills"
 )
@@ -172,5 +174,133 @@ func TestAgentSelfStatusToolFull(t *testing.T) {
 	// cache_usage should always be unavailable
 	if snap["cache_usage"] != "unavailable" {
 		t.Errorf("cache_usage = %v, want unavailable", snap["cache_usage"])
+	}
+}
+
+func TestAgentSelfStatusPhase5(t *testing.T) {
+	ctx := context.Background()
+
+	inactiveList := []skills.InactiveSkill{
+		{Name: "linkedin", FilePath: "/skills/linkedin.md", Reason: "missing env", MissingEnv: []string{"LINKEDIN_LI_AT"}},
+		{Name: "twitter", FilePath: "/skills/twitter.md", Reason: "missing binary", MissingBins: []string{"bird"}},
+		{Name: "tiktok", FilePath: "/skills/tiktok.md", Reason: "missing env and binary", MissingEnv: []string{"TIKTOK_TOKEN"}, MissingBins: []string{"tiktok-cli"}},
+	}
+
+	provider := &stubSelfKnowledgeProvider{
+		agentName:      "Phase5Cat",
+		modelName:      "gpt-4o",
+		providerName:   "copilot",
+		channelType:    "telegram",
+		daemonStarted:  time.Now().Add(-1 * time.Hour),
+		activeSkills:   []skills.Skill{{Name: "weather"}, {Name: "coding"}},
+		inactiveSkills: inactiveList,
+		costTracker:    nil,
+		userID:         "user-phase5",
+	}
+
+	extras := &agentapi.SelfKnowledgeExtras{
+		Roles: []agentapi.RoleView{
+			{Name: "wizard", Priority: 30, KeywordCount: 5},
+			{Name: "oracle", Priority: 100, KeywordCount: 0},
+		},
+		SkillInventory: &skills.Inventory{
+			Active: []skills.Skill{{Name: "weather"}, {Name: "coding"}},
+			Inactive: []skills.InactiveSkill{
+				{Name: "linkedin", MissingEnv: []string{"LINKEDIN_LI_AT"}},
+				{Name: "twitter", MissingBins: []string{"bird"}},
+				{Name: "tiktok", MissingEnv: []string{"TIKTOK_TOKEN"}, MissingBins: []string{"tiktok-cli"}},
+			},
+		},
+		// SchedulerSubsystem is nil — scheduler will appear disabled
+	}
+
+	tool := NewAgentSelfStatusTool(provider, extras)
+
+	// Verify backward-compatible tool name
+	if tool.Name() != "agent_self_status" {
+		t.Fatalf("Name() = %q, want agent_self_status", tool.Name())
+	}
+
+	result, err := tool.Execute(ctx, json.RawMessage(`{"full":false}`))
+	if err != nil {
+		t.Fatalf("Execute() error: %v", err)
+	}
+
+	// --- Verify roles appear in output ---
+	if !strings.Contains(result, "wizard") {
+		t.Error("output should contain role 'wizard'")
+	}
+	if !strings.Contains(result, "oracle") {
+		t.Error("output should contain role 'oracle'")
+	}
+
+	// --- Verify inactive skill summaries use safe reason categories ---
+	if !strings.Contains(result, "missing_env") {
+		t.Error("output should contain safe reason category 'missing_env'")
+	}
+	if !strings.Contains(result, "missing_binary") {
+		t.Error("output should contain safe reason category 'missing_binary'")
+	}
+	// Raw env var names must NOT appear
+	if strings.Contains(result, "LINKEDIN_LI_AT") {
+		t.Error("output must NOT contain raw env var name LINKEDIN_LI_AT")
+	}
+	if strings.Contains(result, "TIKTOK_TOKEN") {
+		t.Error("output must NOT contain raw env var name TIKTOK_TOKEN")
+	}
+
+	// --- Verify scheduler disabled when subsystem nil ---
+	if strings.Contains(result, `"scheduler_enabled": true`) {
+		t.Error("scheduler_enabled should be false when SchedulerSubsystem is nil")
+	}
+
+	// --- Verify inactive_skill_summaries field present ---
+	if !strings.Contains(result, "inactive_skill_summaries") {
+		t.Error("output should contain inactive_skill_summaries field")
+	}
+
+	// --- Verify roles in human-readable section ---
+	if !strings.Contains(result, "--- Roles ---") {
+		t.Error("output should contain '--- Roles ---' section")
+	}
+	if !strings.Contains(result, "priority 30") {
+		t.Error("output should contain 'priority 30' for wizard role")
+	}
+}
+
+// TestAgentSelfStatusNilExtrasBackwardCompat verifies the tool works without extras (pre-Phase 5).
+func TestAgentSelfStatusNilExtrasBackwardCompat(t *testing.T) {
+	ctx := context.Background()
+
+	provider := &stubSelfKnowledgeProvider{
+		agentName:     "LegacyCat",
+		modelName:     "gpt-3.5-turbo",
+		providerName:  "openai",
+		channelType:   "discord",
+		daemonStarted: time.Now().Add(-5 * time.Minute),
+		activeSkills:  []skills.Skill{{Name: "weather"}},
+		costTracker:   nil,
+		userID:        "user-legacy",
+	}
+
+	// No extras — backward compatible call
+	tool := NewAgentSelfStatusTool(provider)
+
+	result, err := tool.Execute(ctx, json.RawMessage(`{}`))
+	if err != nil {
+		t.Fatalf("Execute() error: %v", err)
+	}
+
+	// Should not contain Phase 5 sections
+	if strings.Contains(result, "--- Roles ---") {
+		t.Error("nil-extras output should NOT contain roles section")
+	}
+	if strings.Contains(result, "inactive_skill_summaries") {
+		t.Error("nil-extras output should NOT contain inactive_skill_summaries")
+	}
+
+	// Basic fields should still be present
+	if !strings.Contains(result, "LegacyCat") {
+		t.Error("output should contain agent_name")
 	}
 }
