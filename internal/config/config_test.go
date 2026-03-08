@@ -623,3 +623,33 @@ func TestOverrideDiagnosticsEnv(t *testing.T) {
 		t.Errorf("Source = %q, want %q", diag.Source, "mixed-env-wins")
 	}
 }
+
+func TestOverrideDiagnosticsUnknownField(t *testing.T) {
+	cfg := Defaults()
+
+	diag := GetFieldSourceDiagnostics(cfg, "providers.unknown.model")
+	if diag.Field != "providers.unknown.model" {
+		t.Fatalf("Field = %q; want %q", diag.Field, "providers.unknown.model")
+	}
+	if diag.EnvVar != "" {
+		t.Fatalf("EnvVar = %q; want empty for unknown field", diag.EnvVar)
+	}
+	if diag.Source != "default" {
+		t.Fatalf("Source = %q; want %q", diag.Source, "default")
+	}
+}
+
+func TestOverrideDiagnosticsEnvSameAsYAML(t *testing.T) {
+	cfg := Defaults()
+	cfg.Providers.OpenAI.Model = "gpt-5.2"
+
+	t.Setenv("BLACKCAT_PROVIDERS_OPENAI_MODEL", "gpt-5.2")
+
+	diag := GetFieldSourceDiagnostics(cfg, "providers.openai.model")
+	if diag.Source != "env" {
+		t.Fatalf("Source = %q; want %q", diag.Source, "env")
+	}
+	if diag.EnvValue != "gpt-5.2" {
+		t.Fatalf("EnvValue = %q; want %q", diag.EnvValue, "gpt-5.2")
+	}
+}

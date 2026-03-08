@@ -90,3 +90,15 @@ func TestModelSwitchRegistered(t *testing.T) {
 		t.Fatalf("registry returned tool with wrong name: %q", found.Name())
 	}
 }
+
+func TestModelSwitchEmptyModelParam(t *testing.T) {
+	tool := NewModelSwitchTool(&config.Config{})
+
+	_, err := tool.Execute(context.Background(), mustJSON(map[string]string{"model": ""}))
+	if err == nil {
+		t.Fatal("expected error for empty model param")
+	}
+	if !strings.Contains(err.Error(), "model is required") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}

@@ -62,3 +62,36 @@ func TestCanonicalizeModelIDDisplayNames(t *testing.T) {
 		}
 	}
 }
+
+func TestCanonicalizeModelIDO1Family(t *testing.T) {
+	tests := []string{"o1", "o3", "o4-mini"}
+
+	for _, raw := range tests {
+		ref := CanonicalizeModelID(raw)
+		if ref.Vendor != "openai" {
+			t.Fatalf("vendor for %q = %q; want %q", raw, ref.Vendor, "openai")
+		}
+		wantCanonical := "openai/" + raw
+		if ref.CanonicalID != wantCanonical {
+			t.Fatalf("canonical for %q = %q; want %q", raw, ref.CanonicalID, wantCanonical)
+		}
+	}
+}
+
+func TestCanonicalizeModelIDEmptyRoundTrip(t *testing.T) {
+	ref := CanonicalizeModelID("")
+	if ref != (CanonicalModelRef{}) {
+		t.Fatalf("CanonicalizeModelID(\"\") = %+v; want zero-value CanonicalModelRef", ref)
+	}
+}
+
+func TestCanonicalizeModelIDTextEmbedding(t *testing.T) {
+	ref := CanonicalizeModelID("text-embedding-3-small")
+
+	if ref.Vendor != "openai" {
+		t.Fatalf("vendor = %q; want %q", ref.Vendor, "openai")
+	}
+	if ref.CanonicalID != "openai/text-embedding-3-small" {
+		t.Fatalf("canonical = %q; want %q", ref.CanonicalID, "openai/text-embedding-3-small")
+	}
+}

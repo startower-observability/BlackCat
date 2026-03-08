@@ -152,3 +152,48 @@ func equalStringSlice(a, b []string) bool {
 	}
 	return true
 }
+
+func TestResolveModelTargetOpenAI(t *testing.T) {
+	cfg := &config.Config{}
+
+	got, err := ResolveModelTarget(cfg, "gpt-4.1")
+	if err != nil {
+		t.Fatalf("ResolveModelTarget returned error: %v", err)
+	}
+
+	if got.BackendProvider != "openai" {
+		t.Fatalf("backend = %q; want %q", got.BackendProvider, "openai")
+	}
+	if got.ConfigField != "providers.openai.model" {
+		t.Fatalf("configField = %q; want %q", got.ConfigField, "providers.openai.model")
+	}
+}
+
+func TestResolveModelTargetCodex(t *testing.T) {
+	cfg := &config.Config{}
+
+	got, err := ResolveModelTarget(cfg, "gpt-5.3-codex")
+	if err != nil {
+		t.Fatalf("ResolveModelTarget returned error: %v", err)
+	}
+
+	if got.BackendProvider != "copilot" {
+		t.Fatalf("backend = %q; want %q", got.BackendProvider, "copilot")
+	}
+	if got.ConfigField != "providers.copilot.model" {
+		t.Fatalf("configField = %q; want %q", got.ConfigField, "providers.copilot.model")
+	}
+}
+
+func TestResolveModelTargetFallback(t *testing.T) {
+	cfg := &config.Config{}
+
+	got, err := ResolveModelTarget(cfg, "unknownmodel-xyz")
+	if err != nil {
+		t.Fatalf("ResolveModelTarget returned error: %v", err)
+	}
+
+	if got.Source != "fallback" {
+		t.Fatalf("source = %q; want %q", got.Source, "fallback")
+	}
+}
