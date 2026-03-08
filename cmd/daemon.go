@@ -428,7 +428,7 @@ func runDaemon(cmd *cobra.Command, args []string) error {
 	// Register agent_self_status tool with a static adapter over baseLoopCfg.
 	// The Loop is created per-request, but the tool registry is shared; this
 	// adapter exposes the static config fields that don't change per-request.
-	registry.Register(tools.NewAgentSelfStatusTool(&loopConfigProvider{cfg: &baseLoopCfg, holder: runtimeModelHolder}))
+	registry.Register(tools.NewAgentSelfStatusTool(&loopConfigProvider{cfg: &baseLoopCfg, holder: runtimeModelHolder}, runtimeModelHolder))
 	registry.Register(tools.NewSelfRestartTool())
 	registry.Register(tools.NewModelSwitchTool(cfg))
 
@@ -530,7 +530,7 @@ func runDaemon(cmd *cobra.Command, args []string) error {
 
 	// Phase 5: Re-register agent_self_status with real extras (overwrites line 414).
 	// Registry.Register silently overwrites by tool name — this is intentional.
-	registry.Register(tools.NewAgentSelfStatusTool(&loopConfigProvider{cfg: &baseLoopCfg, holder: runtimeModelHolder}, p5extras))
+	registry.Register(tools.NewAgentSelfStatusTool(&loopConfigProvider{cfg: &baseLoopCfg, holder: runtimeModelHolder}, runtimeModelHolder, p5extras))
 	// Phase 5: Register provider_catalog tool for live model catalog queries.
 	registry.Register(tools.NewProviderCatalogTool(catalogCache))
 

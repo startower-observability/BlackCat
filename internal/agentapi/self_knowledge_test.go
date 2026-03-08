@@ -133,7 +133,7 @@ func TestBuildFullRuntimeSelfKnowledgeSnapshot(t *testing.T) {
 		// SkillInventory and SchedulerSubsystem left nil to test partial enrichment
 	}
 
-	snap := BuildSelfKnowledgeSnapshot(ctx, provider, false, extras)
+	snap := BuildSelfKnowledgeSnapshot(ctx, provider, false, extras, nil)
 
 	// Roles must be populated from extras
 	if len(snap.Roles) != 2 {
@@ -189,7 +189,7 @@ func TestSelfKnowledgeExtrasNil(t *testing.T) {
 		},
 	}
 
-	snap := BuildSelfKnowledgeSnapshot(ctx, provider, false, nil)
+	snap := BuildSelfKnowledgeSnapshot(ctx, provider, false, nil, nil)
 
 	// Must not panic — and base fields must be populated
 	if snap.AgentName != "NilCat" {
@@ -216,5 +216,41 @@ func TestSelfKnowledgeExtrasNil(t *testing.T) {
 	// CacheUsage is always "unavailable"
 	if snap.CacheUsage != "unavailable" {
 		t.Errorf("expected CacheUsage=unavailable, got %q", snap.CacheUsage)
+	}
+}
+
+func TestBuildSelfKnowledgeSnapshotRuntimeModelStatus(t *testing.T) {
+	ctx := context.Background()
+	provider := &stubProvider{
+		agentName:    "RuntimeSnapCat",
+		modelName:    "legacy-model",
+		providerName: "legacy-provider",
+	}
+
+	holder := NewRuntimeModelHolder()
+	holder.Set(RuntimeModelStatus{
+		ConfiguredModel: RuntimeModelRef{CanonicalID: "anthropic/claude-opus-4-6"},
+		AppliedModel:    RuntimeModelRef{CanonicalID: "anthropic/claude-opus-4-6"},
+		BackendProvider: "zen",
+		LastReloadError: "reload failed once",
+		ReloadCount:     3,
+	})
+
+	snap := BuildSelfKnowledgeSnapshot(ctx, provider, false, nil, holder)
+
+	if snap.RuntimeModelStatus.ConfiguredModel.CanonicalID != "anthropic/claude-opus-4-6" {
+		t.Errorf("configured model mismatch: got %q", snap.RuntimeModelStatus.ConfiguredModel.CanonicalID)
+	}
+	if snap.RuntimeModelStatus.AppliedModel.CanonicalID != "anthropic/claude-opus-4-6" {
+		t.Errorf("applied model mismatch: got %q", snap.RuntimeModelStatus.AppliedModel.CanonicalID)
+	}
+	if snap.RuntimeModelStatus.BackendProvider != "zen" {
+		t.Errorf("backend provider mismatch: got %q", snap.RuntimeModelStatus.BackendProvider)
+	}
+	if snap.RuntimeModelStatus.LastReloadError != "reload failed once" {
+		t.Errorf("last reload error mismatch: got %q", snap.RuntimeModelStatus.LastReloadError)
+	}
+	if snap.RuntimeModelStatus.ReloadCount != 3 {
+		t.Errorf("reload count mismatch: got %d", snap.RuntimeModelStatus.ReloadCount)
 	}
 }

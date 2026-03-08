@@ -27,18 +27,19 @@ var agentSelfStatusToolParameters = json.RawMessage(`{
 
 // AgentSelfStatusTool allows the agent to introspect its own runtime state.
 type AgentSelfStatusTool struct {
-	provider agentapi.SelfKnowledgeProvider
-	extras   *agentapi.SelfKnowledgeExtras
+	provider           agentapi.SelfKnowledgeProvider
+	runtimeModelHolder *agentapi.RuntimeModelHolder
+	extras             *agentapi.SelfKnowledgeExtras
 }
 
 // NewAgentSelfStatusTool creates an AgentSelfStatusTool.
 // extras may be nil for backward compatibility (pre-Phase 5 callers).
-func NewAgentSelfStatusTool(provider agentapi.SelfKnowledgeProvider, extras ...*agentapi.SelfKnowledgeExtras) *AgentSelfStatusTool {
+func NewAgentSelfStatusTool(provider agentapi.SelfKnowledgeProvider, runtimeModelHolder *agentapi.RuntimeModelHolder, extras ...*agentapi.SelfKnowledgeExtras) *AgentSelfStatusTool {
 	var ext *agentapi.SelfKnowledgeExtras
 	if len(extras) > 0 {
 		ext = extras[0]
 	}
-	return &AgentSelfStatusTool{provider: provider, extras: ext}
+	return &AgentSelfStatusTool{provider: provider, runtimeModelHolder: runtimeModelHolder, extras: ext}
 }
 
 func (t *AgentSelfStatusTool) Name() string                { return agentSelfStatusToolName }
@@ -64,7 +65,7 @@ func (t *AgentSelfStatusTool) Execute(ctx context.Context, params json.RawMessag
 		_ = json.Unmarshal(params, &args)
 	}
 
-	snap := agentapi.BuildSelfKnowledgeSnapshot(ctx, t.provider, args.Full, t.extras)
+	snap := agentapi.BuildSelfKnowledgeSnapshot(ctx, t.provider, args.Full, t.extras, t.runtimeModelHolder)
 
 	resp := selfStatusResponse{SelfKnowledgeSnapshot: snap}
 
@@ -103,6 +104,32 @@ func (t *AgentSelfStatusTool) Execute(ctx context.Context, params json.RawMessag
 
 	if snap.SchedulerEnabled {
 		sections = append(sections, fmt.Sprintf("\n--- Scheduler ---\nEnabled: true, Tasks: %d", snap.SchedulerTaskCount))
+	}
+
+	if t.runtimeModelHolder != nil {
+		configured := snap.RuntimeModelStatus.ConfiguredModel.CanonicalID
+		if configured == "" {
+			configured = "(unknown)"
+		}
+		applied := snap.RuntimeModelStatus.AppliedModel.CanonicalID
+		if applied == "" {
+			applied = "(unknown)"
+		}
+		backend := snap.RuntimeModelStatus.BackendProvider
+		if backend == "" {
+			backend = "(unknown)"
+		}
+		lastReloadError := snap.RuntimeModelStatus.LastReloadError
+		if lastReloadError == "" {
+			lastReloadError = "(none)"
+		}
+		sections = append(sections, fmt.Sprintf("\n--- Model State ---\nConfigured: %s\nApplied: %s\nBackend: %s\nReload Count: %d\nLast Reload Error: %s",
+			configured,
+			applied,
+			backend,
+			snap.RuntimeModelStatus.ReloadCount,
+			lastReloadError,
+		))
 	}
 
 	if len(sections) > 0 {

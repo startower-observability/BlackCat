@@ -17,8 +17,8 @@ type SelfKnowledgeSnapshot = agentapi.SelfKnowledgeSnapshot
 
 // BuildSelfKnowledgeSnapshot constructs a snapshot from the given provider.
 // Delegates to agentapi.BuildSelfKnowledgeSnapshot.
-func BuildSelfKnowledgeSnapshot(ctx context.Context, p SelfKnowledgeProvider, fullMode bool, extras *agentapi.SelfKnowledgeExtras) SelfKnowledgeSnapshot {
-	return agentapi.BuildSelfKnowledgeSnapshot(ctx, p, fullMode, extras)
+func BuildSelfKnowledgeSnapshot(ctx context.Context, p SelfKnowledgeProvider, fullMode bool, extras *agentapi.SelfKnowledgeExtras, runtimeModelHolder *agentapi.RuntimeModelHolder) SelfKnowledgeSnapshot {
+	return agentapi.BuildSelfKnowledgeSnapshot(ctx, p, fullMode, extras, runtimeModelHolder)
 }
 
 // formatDuration is kept as a package-level alias for tests that call it directly.
