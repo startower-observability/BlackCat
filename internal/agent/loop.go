@@ -232,6 +232,13 @@ func (l *Loop) Run(ctx context.Context, userMessage string) (*Execution, error) 
 
 	toolDefs := l.tools.List()
 
+	// Structural enforcement: if the user is asking about self-knowledge
+	// (identity, capabilities, roles, skills, provider models), run the
+	// relevant tools now — before the first LLM call — and inject the results
+	// into the conversation history. This ensures the LLM always answers from
+	// runtime-backed facts rather than training-time knowledge.
+	l.enforceToolBackedSelfKnowledge(ctx, execution, userMessage)
+
 	for {
 		step := l.processOneTurn(ctx, execution, toolDefs)
 		execution.NextStep = step
