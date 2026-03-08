@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"runtime"
+	"time"
 
 	"github.com/startower-observability/blackcat/internal/service"
 	"github.com/startower-observability/blackcat/internal/types"
@@ -82,9 +83,10 @@ func (t *SelfRestartTool) Execute(_ context.Context, args json.RawMessage) (stri
 		return "", fmt.Errorf("self_restart: daemon is not installed as a service. Run 'blackcat onboard' first")
 	}
 
-	if err := mgr.Restart(); err != nil {
-		return "", fmt.Errorf("self_restart: failed to restart daemon: %w", err)
-	}
+	go func() {
+		time.Sleep(600 * time.Millisecond)
+		_ = mgr.Restart()
+	}()
 
 	return "Daemon restart initiated. Connection will be lost. Reconnect shortly.", nil
 }
