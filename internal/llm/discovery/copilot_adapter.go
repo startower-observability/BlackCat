@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/startower-observability/blackcat/internal/agentapi"
+	"github.com/startower-observability/blackcat/internal/llm"
 )
 
 const (
@@ -115,9 +116,12 @@ func (a *CopilotAdapter) DiscoverModels(ctx context.Context) ([]agentapi.Provide
 			name = m.ID
 		}
 
+		ref := llm.CanonicalizeModelID(m.ID)
+
 		rec := agentapi.ProviderModelRecord{
-			ID:   m.ID,
-			Name: name,
+			ID:          m.ID,
+			CanonicalID: ref.CanonicalID,
+			Name:        name,
 			Freshness: agentapi.FreshnessMetadata{
 				Source: agentapi.SourceLive,
 			},

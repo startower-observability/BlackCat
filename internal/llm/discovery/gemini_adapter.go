@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/startower-observability/blackcat/internal/agentapi"
+	"github.com/startower-observability/blackcat/internal/llm"
 )
 
 // GeminiAdapter discovers models from the Gemini REST API.
@@ -89,9 +90,12 @@ func (a *GeminiAdapter) DiscoverModels(ctx context.Context) ([]agentapi.Provider
 			name = id
 		}
 
+		ref := llm.CanonicalizeModelID(id)
+
 		// Gemini API actually returns token limits, so we use them (not fabricated).
 		rec := agentapi.ProviderModelRecord{
 			ID:            id,
+			CanonicalID:   ref.CanonicalID,
 			Name:          name,
 			ContextWindow: m.InputTokenLimit,
 			MaxOutput:     m.OutputTokenLimit,

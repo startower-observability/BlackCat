@@ -94,6 +94,8 @@ func (c *ProviderCatalogCache) Get(ctx context.Context, provider string) agentap
 		return buildCatalogEntry(provider, entry, agentapi.SourceCachedStale)
 	}
 
+	models = canonicalizeCatalogModels(models)
+
 	newEntry := &catalogEntry{
 		models:    models,
 		fetchedAt: now,
@@ -136,6 +138,8 @@ func (c *ProviderCatalogCache) Refresh(ctx context.Context, provider string) age
 		return buildCatalogEntry(provider, entry, agentapi.SourceCachedStale)
 	}
 
+	models = canonicalizeCatalogModels(models)
+
 	newEntry := &catalogEntry{
 		models:    models,
 		fetchedAt: now,
@@ -143,6 +147,14 @@ func (c *ProviderCatalogCache) Refresh(ctx context.Context, provider string) age
 	}
 	c.cache[provider] = newEntry
 	return buildCatalogEntry(provider, newEntry, agentapi.SourceLive)
+}
+
+func canonicalizeCatalogModels(models []agentapi.ProviderModelRecord) []agentapi.ProviderModelRecord {
+	for i := range models {
+		ref := CanonicalizeModelID(models[i].ID)
+		models[i].CanonicalID = ref.CanonicalID
+	}
+	return models
 }
 
 // Providers returns the list of provider names that have registered adapters.
