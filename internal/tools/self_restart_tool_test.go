@@ -6,6 +6,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/startower-observability/blackcat/internal/service"
 )
@@ -15,6 +16,7 @@ type mockServiceManager struct {
 	installed    bool
 	restartErr   error
 	restartCalls int
+	restartCh    chan struct{}
 }
 
 func (m *mockServiceManager) Install(_ service.ServiceConfig) error { return nil }
@@ -23,6 +25,12 @@ func (m *mockServiceManager) Start() error                          { return nil
 func (m *mockServiceManager) Stop() error                           { return nil }
 func (m *mockServiceManager) Restart() error {
 	m.restartCalls++
+	if m.restartCh != nil {
+		select {
+		case m.restartCh <- struct{}{}:
+		default:
+		}
+	}
 	return m.restartErr
 }
 func (m *mockServiceManager) Status() (service.ServiceStatus, error) {
@@ -124,6 +132,36 @@ func TestSelfRestartNotInstalled(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "not installed") {
 		t.Fatalf("expected 'not installed' error, got: %v", err)
+	}
+}
+
+func TestSelfRestartAsyncRestartOnLinux(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("async restart test only meaningful on Linux")
+	}
+
+	mock := &mockServiceManager{installed: true, restartCh: make(chan struct{}, 1)}
+	tool := NewSelfRestartToolWithFactory(func() service.Manager { return mock })
+
+	result, err := tool.Execute(context.Background(), json.RawMessage(`{"confirm": true}`))
+	if err != nil {
+		t.Fatalf("Execute() returned unexpected error: %v", err)
+	}
+	if !strings.Contains(result, "Daemon restart initiated") {
+		t.Fatalf("expected success message, got: %q", result)
+	}
+
+	if mock.restartCalls != 0 {
+		t.Fatalf("Restart() should not be called synchronously, got %d calls", mock.restartCalls)
+	}
+
+	select {
+	case <-mock.restartCh:
+		if mock.restartCalls == 0 {
+			t.Fatal("expected Restart() to be called asynchronously")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for asynchronous Restart() call")
 	}
 }
 

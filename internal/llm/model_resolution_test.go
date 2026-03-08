@@ -141,6 +141,24 @@ func TestResolveModelTargetVendorInferredWhenTargetBackendDisabled(t *testing.T)
 	}
 }
 
+func TestResolveModelTargetOpenAIVendorReroutesToCopilotWhenOpenAIDisabled(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Providers.Copilot.Enabled = true
+	cfg.Providers.OpenAI.Enabled = false
+
+	got, err := ResolveModelTarget(cfg, "gpt-5.2")
+	if err != nil {
+		t.Fatalf("ResolveModelTarget returned error: %v", err)
+	}
+
+	if got.BackendProvider != "copilot" {
+		t.Fatalf("backend = %q; want %q", got.BackendProvider, "copilot")
+	}
+	if got.ConfigField != "providers.copilot.model" {
+		t.Fatalf("configField = %q; want %q", got.ConfigField, "providers.copilot.model")
+	}
+}
+
 func equalStringSlice(a, b []string) bool {
 	if len(a) != len(b) {
 		return false

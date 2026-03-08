@@ -61,6 +61,11 @@ func ResolveModelTarget(cfg *config.Config, requestedID string) (ResolvedModelTa
 	canonical := CanonicalizeModelID(requestedID)
 
 	backend, cfgField := backendForVendor(canonical.Vendor)
+	// If openai vendor but openai backend not enabled, check if copilot is enabled (it proxies OpenAI models)
+	if canonical.Vendor == "openai" && !isBackendEnabled(cfg, "openai") && isBackendEnabled(cfg, "copilot") {
+		backend = "copilot"
+		cfgField = "providers.copilot.model"
+	}
 	if canonical.Vendor == "" {
 		backend = ""
 		cfgField = ""
